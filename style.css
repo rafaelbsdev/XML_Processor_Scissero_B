@@ -19,7 +19,7 @@
 
 body {
     font-family: var(--font-family);
-    background-color: var(--dark-bg); /* Fundo sólido */
+    background-color: var(--dark-bg);
     color: var(--text-primary);
     line-height: 1.6;
     min-height: 100vh;
@@ -316,16 +316,21 @@ tbody .sticky-col {
     background-color: var(--panel-bg);
 }
 
+tbody tr:nth-child(odd) .sticky-col {
+    background-color: #242d41;
+}
+
 tbody tr:nth-child(even) .sticky-col {
     background-color: #242d41;
 }
 
-tbody tr:hover .sticky-col {
-    background-color: rgba(0, 119, 200, 0.1);
+tbody tr,
+.sticky-col:hover {
+    z-index: -1;
 }
 
 thead .sticky-col {
-    z-index: 3;
+    z-index: 4;
     background-color: var(--dark-bg);
 }
 

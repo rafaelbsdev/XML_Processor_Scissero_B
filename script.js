@@ -1,3 +1,4 @@
+// --- Seletores atualizados para a nova UI ---
 const fileInput = document.getElementById("file-input");
 const dropZone = document.querySelector(".drop-zone");
 const fileList = document.getElementById("file-list");
@@ -14,6 +15,7 @@ let consolidatedData = [];
 let headerStructure = [];
 let maxAssetsForExport = 0;
 
+// --- Eventos da UI ---
 dropZone.addEventListener("dragover", (e) => {
     e.preventDefault();
     dropZone.classList.add("drag-over");
@@ -60,6 +62,7 @@ function updateFileList() {
     }
 }
 
+// --- Funções Utilitárias ---
 const setDate = (strDate) => {
     if (!strDate) return "";
     const date = new Date(strDate + 'T00:00:00Z');
@@ -107,6 +110,7 @@ const calculateTenor = (startDateStr, endDateStr) => {
     return months > 12 && months % 12 === 0 ? `${months / 12}Y` : `${months}M`;
 };
 
+// --- Lógica de Extração ---
 const detectXMLFormat = (xmlNode) => {
     if (xmlNode.querySelector("pyrEvoDoc")) return 'pyrEvoDoc';
     if (xmlNode.querySelector("priip")) return 'Barclays';
@@ -134,9 +138,10 @@ const extractPyrEvoDocData = (xmlNode) => {
         }
         return findFirstContent(productNode, ["bufferedReturnEnhancedNote > productType", "reverseConvertible > description", "productName"]);
     };
+    // ===== ALTERAÇÃO: Remoção do "X" no final do valor =====
     const upsideLeverage = (productNode) => {
         const leverage = findFirstContent(productNode, ["bufferedReturnEnhancedNote > upsideLeverage"]);
-        return (leverage && `${leverage}X`) || "N/A";
+        return leverage || "N/A";
     };
     const upsideCap = (productNode) => {
         const cap = findFirstContent(productNode, ["bufferedReturnEnhancedNote > upsideCap"]);
@@ -256,12 +261,15 @@ const extractPyrEvoDocData = (xmlNode) => {
 const extractBarclaysData = (xmlNode) => {
     const isin = findFirstContent(xmlNode, ["codes > isin"]);
     if (!isin) return null;
+
     const issueDateStr = findFirstContent(xmlNode, ["trade > dates > issueDate"]);
     const maturityDateStr = findFirstContent(xmlNode, ["trade > dates > maturityDate"]);
     const assetsNodes = xmlNode.querySelectorAll("referenceAsset > underlyings > item");
     const assetType = findFirstContent(assetsNodes[0], ["type"]);
+
     const barrierLevelValue = parseFloat(findFirstContent(xmlNode, ["payoff > paymentAtMaturity > knockInBarrierLevelRelative > value"]));
     const formattedBarrierLevel = isNaN(barrierLevelValue) ? "N/A" : `${barrierLevelValue * 100}%`;
+    const detailBufferKIBarrierValue = (formattedBarrierLevel === "N/A") ? "N/A" : "KI Barrier";
 
     return {
         format: 'Barclays', identifier: isin, prodCusip: "", prodIsin: isin,
@@ -275,7 +283,7 @@ const extractBarclaysData = (xmlNode) => {
         couponMemory: findFirstContent(xmlNode, ["payoff > couponEvents > schedule > item > memory"]) === 'true' ? 'Y' : 'N',
         upsideCap: "N/A", upsideLeverage: "N/A", callFrequency: findFirstContent(xmlNode, ["payoff > callEvents > autoCallObservationDatesInterval"]) || "N/A",
         callNonCallPeriod: calculateTenor(issueDateStr, findFirstContent(xmlNode, ["payoff > callEvents > schedule > item > settlementDate"])),
-        detailCappedUncapped: "N/A", detailBufferKIBarrier: "KI Barrier", detailBufferBarrierLevel: formattedBarrierLevel,
+        detailCappedUncapped: "N/A", detailBufferKIBarrier: detailBufferKIBarrierValue, detailBufferBarrierLevel: formattedBarrierLevel,
         detailInterestBarrierTriggerValue: "N/A",
         dateBookingStrikeDate: setDate(findFirstContent(xmlNode, ["trade > dates > initialValuationDate"])),
         dateBookingPricingDate: setDate(findFirstContent(xmlNode, ["trade > dates > tradeDate"])),
@@ -284,6 +292,7 @@ const extractBarclaysData = (xmlNode) => {
     };
 };
 
+// --- Lógica Principal da Aplicação ---
 async function previewExtractedXML() {
     const files = Array.from(fileInput.files);
     if (files.length === 0) {
@@ -457,7 +466,7 @@ function renderTable(data, maxAssets) {
         htmlTable += `<td>${row.maturityDate || ""}</td>`;
         htmlTable += `<td>${row.valuationDate || ""}</td>`;
         htmlTable += `<td>${row.earlyStrike || ""}</td>`;
-
+        
         if (showDocTypeColumns) {
             htmlTable += `<td>${row.termSheet || ""}</td>`;
             htmlTable += `<td>${row.finalPS || ""}</td>`;
