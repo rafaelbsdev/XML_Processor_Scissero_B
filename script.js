@@ -1,4 +1,3 @@
-// --- Seletores atualizados para a nova UI ---
 const fileInput = document.getElementById("file-input");
 const dropZone = document.querySelector(".drop-zone");
 const fileList = document.getElementById("file-list");
@@ -14,8 +13,8 @@ const loader = document.querySelector('.loader-container');
 let consolidatedData = [];
 let headerStructure = [];
 let maxAssetsForExport = 0;
+let currentSort = { key: null, direction: 'asc' };
 
-// --- Eventos da UI ---
 dropZone.addEventListener("dragover", (e) => {
     e.preventDefault();
     dropZone.classList.add("drag-over");
@@ -62,7 +61,6 @@ function updateFileList() {
     }
 }
 
-// --- Funções Utilitárias ---
 const setDate = (strDate) => {
     if (!strDate) return "";
     const date = new Date(strDate + 'T00:00:00Z');
@@ -110,7 +108,6 @@ const calculateTenor = (startDateStr, endDateStr) => {
     return months > 12 && months % 12 === 0 ? `${months / 12}Y` : `${months}M`;
 };
 
-// --- Lógica de Extração ---
 const detectXMLFormat = (xmlNode) => {
     if (xmlNode.querySelector("pyrEvoDoc")) return 'pyrEvoDoc';
     if (xmlNode.querySelector("priip")) return 'Barclays';
@@ -138,10 +135,8 @@ const extractPyrEvoDocData = (xmlNode) => {
         }
         return findFirstContent(productNode, ["bufferedReturnEnhancedNote > productType", "reverseConvertible > description", "productName"]);
     };
-    // ===== ALTERAÇÃO: Remoção do "X" no final do valor =====
     const upsideLeverage = (productNode) => {
-        const leverage = findFirstContent(productNode, ["bufferedReturnEnhancedNote > upsideLeverage"]);
-        return leverage || "N/A";
+        return findFirstContent(productNode, ["bufferedReturnEnhancedNote > upsideLeverage"]) || "N/A";
     };
     const upsideCap = (productNode) => {
         const cap = findFirstContent(productNode, ["bufferedReturnEnhancedNote > upsideCap"]);
@@ -292,7 +287,6 @@ const extractBarclaysData = (xmlNode) => {
     };
 };
 
-// --- Lógica Principal da Aplicação ---
 async function previewExtractedXML() {
     const files = Array.from(fileInput.files);
     if (files.length === 0) {
@@ -307,6 +301,7 @@ async function previewExtractedXML() {
     btnPreview.disabled = true;
     loader.style.display = 'flex';
     dataTableContainer.style.display = 'none';
+    currentSort = { key: null, direction: 'asc' };
 
     try {
         const productMap = new Map();
@@ -339,8 +334,8 @@ async function previewExtractedXML() {
         }
         consolidatedData = Array.from(productMap.values());
         if (consolidatedData.length > 0) {
-            maxAssetsForExport = consolidatedData.reduce((max, item) => Math.max(max, item.assets.length), 0);
-            renderTable(consolidatedData, maxAssetsForExport);
+            maxAssetsForExport = consolidatedData.reduce((max, item) => Math.max(max, item.assets ? item.assets.length : 0), 0);
+            renderTable(consolidatedData);
             btnExport.style.display = "inline-flex";
             dataTableContainer.style.display = 'block';
         } else {
@@ -355,30 +350,150 @@ async function previewExtractedXML() {
     }
 }
 
-function renderTable(data, maxAssets) {
-    if (data.length === 0) {
-        message.innerHTML = `No data found in the selected XML files.`;
+document.addEventListener('click', (event) => {
+    const header = event.target.closest('thead th[data-sort-key]');
+    if (header) {
+        const sortKey = header.dataset.sortKey;
+        sortTable(sortKey);
+    }
+});
+
+function getSortableValue(value) {
+    if (value === null || value === undefined || value === "" || value === "N/A") {
+        return -Infinity; 
+    }
+    const stringValue = String(value); 
+    const dateMatch = stringValue.match(/^(\d{2})-([A-Za-z]{3})-(\d{2})$/);
+    if (dateMatch) {
+        const date = new Date(`${dateMatch[1]} ${dateMatch[2]} 20${dateMatch[3]}`);
+        if (!isNaN(date.getTime())) {
+            return date.getTime();
+        }
+    }
+    const num = parseFloat(stringValue.replace(/[^0-9.-]+/g, ""));
+    if (!isNaN(num)) {
+        return num;
+    }
+    return stringValue.toLowerCase();
+}
+
+function sortTable(sortKey) {
+    if (currentSort.key === sortKey) {
+        currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        currentSort.key = sortKey;
+        currentSort.direction = 'asc';
+    }
+
+    consolidatedData.sort((a, b) => {
+        let valA, valB;
+
+        if (sortKey.startsWith('asset_')) {
+            const index = parseInt(sortKey.split('_')[1], 10);
+            valA = getSortableValue(a.assets && a.assets[index] ? a.assets[index] : "");
+            valB = getSortableValue(b.assets && b.assets[index] ? b.assets[index] : "");
+        } else {
+            valA = getSortableValue(a[sortKey]);
+            valB = getSortableValue(b[sortKey]);
+        }
+
+        if (valA === -Infinity && valB === -Infinity) return 0;
+        if (valA === -Infinity) return currentSort.direction === 'asc' ? -1 : 1;
+        if (valB === -Infinity) return currentSort.direction === 'asc' ? 1 : -1;
+
+        if (valA < valB) return currentSort.direction === 'asc' ? -1 : 1;
+        if (valA > valB) return currentSort.direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    renderTable(consolidatedData);
+    applyRowGrouping();
+}
+
+function applyRowGrouping() {
+    const tableBody = dataTable.querySelector('tbody');
+    if (!tableBody || !currentSort.key) return;
+
+    const rows = Array.from(tableBody.querySelectorAll('tr'));
+    if (rows.length === 0) return;
+
+    let currentGroupClass = 'group-a';
+    let lastValue = null;
+
+    const headerCells = Array.from(document.querySelectorAll('thead th[data-sort-key]'));
+    let sortKeyIndex = -1;
+
+    for(let i=0; i< headerCells.length; i++) {
+        if(headerCells[i].dataset.sortKey === currentSort.key) {
+            let actualCellIndex = 0;
+            let currentHeader = headerCells[i];
+            while (currentHeader.previousElementSibling) {
+                actualCellIndex++;
+                currentHeader = currentHeader.previousElementSibling;
+            }
+
+            const firstHeader = document.querySelector('thead th.sticky-col');
+            if (firstHeader && firstHeader.getAttribute('rowspan') === '2') {
+                 if (headerCells[i].closest('tr') === firstHeader.closest('tr').nextElementSibling) {
+                      // Se está na segunda linha e a sticky col ocupa 2, adiciona 1 ao index
+                 } else if (headerCells[i].compareDocumentPosition(firstHeader) & Node.DOCUMENT_POSITION_FOLLOWING) {
+                     // Se está depois da sticky col na mesma linha (ou span)
+                 }
+
+            }
+
+            let visibleIndex = 0;
+            const allHeadersSecondRow = document.querySelectorAll('thead .second-tr th');
+            const allHeadersFirstRowSingle = document.querySelectorAll('thead .first-tr th[rowspan="2"]');
+
+            allHeadersFirstRowSingle.forEach(th => {
+                 if (th.dataset.sortKey === currentSort.key) {
+                     sortKeyIndex = visibleIndex;
+                 }
+                 visibleIndex++;
+            });
+
+            if (sortKeyIndex === -1) {
+                allHeadersSecondRow.forEach(th => {
+                     if (th.dataset.sortKey === currentSort.key) {
+                        sortKeyIndex = visibleIndex;
+                     }
+                     visibleIndex++;
+                });
+            }
+            break;
+        }
+    }
+
+
+    if (sortKeyIndex === -1) {
+        console.error("Could not find index for sort key:", currentSort.key);
         return;
     }
-    const filterContainer = document.querySelector('.filter-container');
-    productTypeFilter.innerHTML = ''; 
-    const productTypes = uniqueArray(data, 'productType');
-    const allOption = document.createElement('option');
-    allOption.value = 'all';
-    allOption.textContent = 'All Types';
-    productTypeFilter.appendChild(allOption);
-    productTypes.forEach(type => {
-        if (type) {
-            const option = document.createElement('option');
-            option.value = type;
-            option.textContent = type;
-            productTypeFilter.appendChild(option);
+
+    rows.forEach(row => {
+        row.classList.remove('group-a', 'group-b');
+        const cell = row.cells[sortKeyIndex];
+        if (!cell) return;
+        
+        const currentValue = cell.textContent;
+        if (lastValue !== null && currentValue !== lastValue) {
+            currentGroupClass = currentGroupClass === 'group-a' ? 'group-b' : 'group-a';
         }
+        
+        row.classList.add(currentGroupClass);
+        lastValue = currentValue;
     });
-    filterContainer.style.display = 'block';
-    
-    let assetHeaders = Array.from({ length: maxAssets }, (_, i) => `Asset ${i + 1}`);
-    if (maxAssets === 1) assetHeaders = ["Asset"];
+}
+
+function renderTable(data) {
+    if (!data || data.length === 0) {
+        dataTable.innerHTML = "No data to display.";
+        return;
+    }
+   
+    let assetHeaders = Array.from({ length: maxAssetsForExport }, (_, i) => ({ title: `Asset ${i + 1}`, sortKey: `asset_${i}`}));
+    if (maxAssetsForExport === 1) assetHeaders = [{ title: "Asset", sortKey: 'asset_0' }];
     
     const hasBrenRenProducts = data.some(row => row.productType === 'BREN' || row.productType === 'REN');
     
@@ -395,43 +510,57 @@ function renderTable(data, maxAssets) {
         }
     }
     
-    let initialHeaders = [{ title: idColumnTitle, isSticky: true }]; 
+    const firstColSortKey = formatsInData.has('pyrEvoDoc') ? 'prodCusip' : 'identifier';
+    let initialHeaders = [{ title: idColumnTitle, isSticky: true, sortKey: firstColSortKey }];
     if (showSecondIsinColumn) {
-        initialHeaders.push({ title: "ISIN" });
+        initialHeaders.push({ title: "ISIN", sortKey: 'prodIsin' });
     }
 
-    const detailsChildren = ["Upside Cap", "Upside Leverage"];
+    const detailsChildren = [
+        { title: "Upside Cap", sortKey: 'upsideCap'}, 
+        { title: "Upside Leverage", sortKey: 'upsideLeverage'}
+    ];
     if (hasBrenRenProducts) {
-        detailsChildren.push("Capped / Uncapped");
+        detailsChildren.push({ title: "Capped / Uncapped", sortKey: 'detailCappedUncapped'});
     }
-    detailsChildren.push("Buffer / Barrier", "Barrier/Buffer Level", "Interest v Barrier/Buffer");
+    detailsChildren.push(
+        { title: "Buffer / Barrier", sortKey: 'detailBufferKIBarrier'}, 
+        { title: "Barrier/Buffer Level", sortKey: 'detailBufferBarrierLevel'}, 
+        { title: "Interest v Barrier/Buffer", sortKey: 'detailInterestBarrierTriggerValue'}
+    );
 
-    const callChildren = ["Frequency", "Non-call period"];
+    const callChildren = [
+        { title: "Frequency", sortKey: 'callFrequency' }, 
+        { title: "Non-call period", sortKey: 'callNonCallPeriod' }
+    ];
 
     headerStructure = [
         ...initialHeaders,
-        { title: "Underlying", children: ["Asset Type", ...assetHeaders] },
-        { title: "Product Details", children: ["Product Type", "Client", "Tenor"] },
-        { title: "Coupons", children: ["Frequency", "Barrier Level", "Memory"] },
+        { title: "Underlying", children: [{ title: "Asset Type", sortKey: 'underlyingAssetType'}, ...assetHeaders] },
+        { title: "Product Details", children: [{ title: "Product Type", sortKey: 'productType'}, { title: "Client", sortKey: 'productClient'}, { title: "Tenor", sortKey: 'productTenor'}] },
+        { title: "Coupons", children: [{ title: "Frequency", sortKey: 'couponFrequency'}, { title: "Barrier Level", sortKey: 'couponBarrierLevel'}, { title: "Memory", sortKey: 'couponMemory'}] },
         { title: "CALL", children: callChildren },
         { title: "Details", children: detailsChildren },
-        { title: "DATES IN BOOKINGS", children: ["Strike", "Pricing", "Maturity", "Valuation", "Early Strike"] }
+        { title: "DATES IN BOOKINGS", children: [{ title: "Strike", sortKey: 'dateBookingStrikeDate'}, { title: "Pricing", sortKey: 'dateBookingPricingDate'}, { title: "Maturity", sortKey: 'maturityDate'}, { title: "Valuation", sortKey: 'valuationDate'}, { title: "Early Strike", sortKey: 'earlyStrike'}] }
     ];
 
     if (showDocTypeColumns) {
-        headerStructure.push({ title: "Doc Type", children: ["Term Sheet", "Final PS", "Fact Sheet"] });
+        headerStructure.push({ title: "Doc Type", children: [{ title: "Term Sheet", sortKey: 'termSheet'}, { title: "Final PS", sortKey: 'finalPS'}, { title: "Fact Sheet", sortKey: 'factSheet'}] });
     }
 
     let htmlTable = "<table><thead><tr class='first-tr'>";
-    headerStructure.forEach(({ title, children, isSticky }) => {
+    headerStructure.forEach(({ title, children, isSticky, sortKey }) => {
         const span = children ? `colspan="${children.length}"` : `rowspan="2"`;
         const stickyClass = isSticky ? 'sticky-col' : '';
         const categoryClass = children ? 'category' : '';
-        htmlTable += `<th class="${stickyClass} ${categoryClass}" ${span}>${title.toUpperCase()}</th>`;
+        const sortKeyAttr = isSticky && !children ? `data-sort-key="${sortKey}"` : ''; 
+        htmlTable += `<th class="${stickyClass} ${categoryClass}" ${span} ${sortKeyAttr}>${title.toUpperCase()}</th>`;
     });
     htmlTable += "</tr><tr class='second-tr'>";
     headerStructure.forEach(({ children }) => {
-        if (children) children.forEach(child => (htmlTable += `<th>${child}</th>`));
+        if (Array.isArray(children)) { 
+            children.forEach(child => (htmlTable += `<th data-sort-key="${child.sortKey}">${child.title}</th>`));
+        }
     });
     htmlTable += "</tr></thead><tbody>";
     data.forEach(row => {
@@ -442,8 +571,8 @@ function renderTable(data, maxAssets) {
         }
         
         htmlTable += `<td>${row.underlyingAssetType || ""}</td>`;
-        for (let i = 0; i < maxAssets; i++) {
-            htmlTable += `<td>${row.assets[i] || ""}</td>`;
+        for (let i = 0; i < maxAssetsForExport; i++) {
+             htmlTable += `<td>${(row.assets && row.assets[i]) ? row.assets[i] : ""}</td>`;
         }
         htmlTable += `<td>${row.productType || ""}</td>`;
         htmlTable += `<td>${row.productClient || ""}</td>`;
@@ -476,20 +605,32 @@ function renderTable(data, maxAssets) {
     });
     htmlTable += "</tbody></table>";
     dataTable.innerHTML = htmlTable;
+
+    document.querySelectorAll('thead th[data-sort-key]').forEach(th => {
+        th.classList.remove('sorted-asc', 'sorted-desc');
+    });
+
+    if (currentSort.key) {
+        const activeHeader = document.querySelector(`thead th[data-sort-key="${currentSort.key}"]`);
+        if (activeHeader) {
+            activeHeader.classList.add(currentSort.direction === 'asc' ? 'sorted-asc' : 'sorted-desc');
+        }
+    }
 }
 
 function exportExcel() {
     const selectedType = productTypeFilter.value;
-    let filteredData = consolidatedData;
+    let dataToExport = consolidatedData;
 
     if (selectedType !== 'all') {
-        filteredData = consolidatedData.filter(row => row.productType === selectedType);
+        dataToExport = dataToExport.filter(row => row.productType === selectedType);
     }
-    if (filteredData.length === 0) {
+
+    if (dataToExport.length === 0) {
         message.innerHTML = "No data to export for the selected filter.";
         return;
     }
-    const groupedData = filteredData.reduce((acc, row) => {
+    const groupedData = dataToExport.reduce((acc, row) => {
         const key = row.productType || 'Uncategorized';
         if (!acc[key]) acc[key] = [];
         acc[key].push(row);
@@ -504,7 +645,6 @@ function exportExcel() {
         const idColumnTitle = format === 'Barclays' ? 'ISIN' : 'CUSIP';
         const showSecondIsinColumn = format === 'pyrEvoDoc';
         const isBrenRenSheet = sheetData.some(row => row.productType === 'BREN' || row.productType === 'REN');
-        
         const showDocTypeColumns = (format !== 'Barclays');
 
         let assetHeaders = Array.from({ length: maxAssetsForExport }, (_, i) => `Asset ${i + 1}`);
@@ -526,7 +666,6 @@ function exportExcel() {
             { title: "Details", children: detailsChildren },
             { title: "DATES IN BOOKINGS", children: ["Strike", "Pricing", "Maturity", "Valuation", "Early Strike"] }
         ];
-
         if (showDocTypeColumns) {
             localHeaderStructure.push({ title: "Doc Type", children: ["Term Sheet", "Final PS", "Fact Sheet"] });
         }
@@ -546,7 +685,7 @@ function exportExcel() {
             rowAsArray.push(row.prodCusip || row.identifier);
             if (showSecondIsinColumn) rowAsArray.push(row.prodIsin || "");
             rowAsArray.push(row.underlyingAssetType);
-            for (let i = 0; i < maxAssetsForExport; i++) rowAsArray.push(row.assets[i] || "");
+            for (let i = 0; i < maxAssetsForExport; i++) rowAsArray.push(row.assets && row.assets[i] ? row.assets[i] : "");
             rowAsArray.push(
                 row.productType, row.productClient, row.productTenor, row.couponFrequency,
                 row.couponBarrierLevel, row.couponMemory, row.callFrequency, row.callNonCallPeriod,
