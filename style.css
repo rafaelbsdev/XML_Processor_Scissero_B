@@ -11,7 +11,6 @@
     --error-color: #e57373;
     --group-a-bg: transparent; 
     --group-b-bg: rgba(0, 0, 0, 0.1);
-    --panel-bg-even: #242d41;
 }
 
 *, *::before, *::after {
@@ -303,12 +302,12 @@ td {
     border-bottom: 1px solid var(--panel-border);
 }
 
-thead th[data-sort-key] {
+thead .second-tr th {
     cursor: pointer;
     position: relative;
 }
 
-thead th[data-sort-key]::after {
+thead .second-tr th::after {
     content: '';
     position: absolute;
     right: 10px;
@@ -318,11 +317,11 @@ thead th[data-sort-key]::after {
     border: 4px solid transparent;
 }
 
-thead th[data-sort-key].sorted-asc::after {
+thead .second-tr th.sorted-asc::after {
     border-bottom-color: var(--text-secondary);
 }
 
-thead th[data-sort-key].sorted-desc::after {
+thead .second-tr th.sorted-desc::after {
     border-top-color: var(--text-secondary);
 }
 
@@ -342,17 +341,6 @@ tbody tr:hover td {
 tbody .sticky-col {
     z-index: 1;
 }
-
-tbody tr.group-a .sticky-col { background-color: var(--group-a-bg); }
-tbody tr.group-b .sticky-col { background-color: var(--group-b-bg); }
-
-tbody tr:nth-child(odd) .sticky-col {
-    background-color: #334155;
-}
-tbody tr:nth-child(even) .sticky-col {
-    background-color: var(--panel-bg-even, #242d41);
-}
-
 
 tbody tr:hover .sticky-col {
     z-index: 3;
@@ -374,4 +362,12 @@ thead .sticky-col.category {
     margin-bottom: 2rem;
     color: var(--text-secondary);
     font-size: 0.9rem;
+}
+
+tbody tr:nth-child(even) .sticky-col {
+    background-color: #242d41;
+}
+
+tbody tr:nth-child(odd) .sticky-col {
+    background-color: #334155;
 }
