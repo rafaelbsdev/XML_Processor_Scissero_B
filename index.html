@@ -1,42 +1,70 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  <meta charset="UTF-8" />
-  <title>SmartDX Scenario Extractor</title>
-  
-  <link rel="stylesheet" href="style.css">
-  
-  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
+    <meta charset="UTF-8" />
+    <title>Scissero - Scenario Extractor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="style.css">
+    
+    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
 </head>
-
 <body>
-  <div class="wrap">
-    <h1>SmartDX Scenario Extractor — XML ➜ Scenario List</h1>
-    <div class="panel">
-      <div class="fields">
-        <input type="file" class="inputXML" multiple accept=".xml" />
-        
-        <div class="filter-container" style="display: none;">
-          <label for="productTypeFilter" style="margin-left: 10px;">Filter by Type:</label>
-          <select id="productTypeFilter" class="custom-select"></select>
+    <div class="container">
+        <header class="main-header">
+            <svg class="logo" width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <h1>Scenario Extractor</h1>
+            <p>Powered by Scissero Technology</p>
+        </header>
+
+        <div class="panel">
+            <div class="drop-zone">
+                <input type="file" id="file-input" class="inputXML" multiple accept=".xml" hidden />
+                <label for="file-input" class="drop-zone-label">
+                    <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    <p>Drag and drop XML files here or <strong>click to select</strong></p>
+                </label>
+            </div>
+            
+            <div id="file-list-container" class="file-list-container" style="display: none;">
+                <h3>Selected Files:</h3>
+                <div id="file-list"></div>
+            </div>
+
+            <div class="controls">
+                <div class="filter-container" style="display: none;">
+                    <select id="productTypeFilter" class="custom-select"></select>
+                </div>
+                <button class="btn btn-primary btnPreviewData" disabled>
+                    Process Data
+                </button>
+                <button class="btn btn-secondary btnExportExcel" style="display: none;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    Export Excel
+                </button>
+            </div>
+            
+            <div class="message"></div>
         </div>
 
-        <button class="btnPreviewData">
-          Preview Data
-        </button>
-        <button class="btnExportExcel" style="display: none;">
-          Export Excel
-        </button>
-      </div>
-
-      <div class="message"></div>
-      
-      <div class="dataTable"></div>
+        <div class="loader-container" style="display: none;">
+            <div class="loader"></div>
+        </div>
+        <div class="dataTable-container">
+            <div class="dataTable"></div>
+        </div>
     </div>
-  </div>
 
-  <script src="script.js"></script>
+    <footer class="main-footer">
+        <p>&copy; 2025 Scissero. All Rights Reserved.</p>
+    </footer>
+
+    <script src="script.js"></script>
 </body>
-
 </html>
