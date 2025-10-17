@@ -376,6 +376,7 @@ function renderTable(data, maxAssets) {
     const formatsInData = new Set(data.map(row => row.format));
     let idColumnTitle = "CUSIP / ISIN";
     let showSecondIsinColumn = false;
+    const showDocTypeColumns = !(formatsInData.size === 1 && formatsInData.has('Barclays'));
 
     if (formatsInData.size === 1) {
         if (formatsInData.has('Barclays')) idColumnTitle = "ISIN";
@@ -405,15 +406,19 @@ function renderTable(data, maxAssets) {
         { title: "Coupons", children: ["Frequency", "Barrier Level", "Memory"] },
         { title: "CALL", children: callChildren },
         { title: "Details", children: detailsChildren },
-        { title: "DATES IN BOOKINGS", children: ["Strike", "Pricing", "Maturity", "Valuation", "Early Strike"] },
-        { title: "Doc Type", children: ["Term Sheet", "Final PS", "Fact Sheet"] }
+        { title: "DATES IN BOOKINGS", children: ["Strike", "Pricing", "Maturity", "Valuation", "Early Strike"] }
     ];
+
+    if (showDocTypeColumns) {
+        headerStructure.push({ title: "Doc Type", children: ["Term Sheet", "Final PS", "Fact Sheet"] });
+    }
 
     let htmlTable = "<table><thead><tr class='first-tr'>";
     headerStructure.forEach(({ title, children, isSticky }) => {
-        const span = children ? `colspan="${children.length}" class="category"` : `rowspan="2"`;
-        const stickyClass = isSticky ? 'class="sticky-col"' : (children ? 'class="category"' : '');
-        htmlTable += `<th ${span} ${stickyClass}>${title.toUpperCase()}</th>`;
+        const span = children ? `colspan="${children.length}"` : `rowspan="2"`;
+        const stickyClass = isSticky ? 'sticky-col' : '';
+        const categoryClass = children ? 'category' : '';
+        htmlTable += `<th class="${stickyClass} ${categoryClass}" ${span}>${title.toUpperCase()}</th>`;
     });
     htmlTable += "</tr><tr class='second-tr'>";
     headerStructure.forEach(({ children }) => {
@@ -452,9 +457,12 @@ function renderTable(data, maxAssets) {
         htmlTable += `<td>${row.maturityDate || ""}</td>`;
         htmlTable += `<td>${row.valuationDate || ""}</td>`;
         htmlTable += `<td>${row.earlyStrike || ""}</td>`;
-        htmlTable += `<td>${row.termSheet || ""}</td>`;
-        htmlTable += `<td>${row.finalPS || ""}</td>`;
-        htmlTable += `<td>${row.factSheet || ""}</td>`;
+
+        if (showDocTypeColumns) {
+            htmlTable += `<td>${row.termSheet || ""}</td>`;
+            htmlTable += `<td>${row.finalPS || ""}</td>`;
+            htmlTable += `<td>${row.factSheet || ""}</td>`;
+        }
         htmlTable += "</tr>";
     });
     htmlTable += "</tbody></table>";
@@ -488,6 +496,8 @@ function exportExcel() {
         const showSecondIsinColumn = format === 'pyrEvoDoc';
         const isBrenRenSheet = sheetData.some(row => row.productType === 'BREN' || row.productType === 'REN');
         
+        const showDocTypeColumns = (format !== 'Barclays');
+
         let assetHeaders = Array.from({ length: maxAssetsForExport }, (_, i) => `Asset ${i + 1}`);
         if (maxAssetsForExport === 1) assetHeaders = ["Asset"];
         
@@ -505,9 +515,12 @@ function exportExcel() {
             { title: "Coupons", children: ["Frequency", "Barrier Level", "Memory"] },
             { title: "CALL", children: callChildren },
             { title: "Details", children: detailsChildren },
-            { title: "DATES IN BOOKINGS", children: ["Strike", "Pricing", "Maturity", "Valuation", "Early Strike"] },
-            { title: "Doc Type", children: ["Term Sheet", "Final PS", "Fact Sheet"] }
+            { title: "DATES IN BOOKINGS", children: ["Strike", "Pricing", "Maturity", "Valuation", "Early Strike"] }
         ];
+
+        if (showDocTypeColumns) {
+            localHeaderStructure.push({ title: "Doc Type", children: ["Term Sheet", "Final PS", "Fact Sheet"] });
+        }
         
         const headerRow1 = [], headerRow2 = [];
         localHeaderStructure.forEach(h => {
@@ -535,8 +548,10 @@ function exportExcel() {
                 row.detailBufferKIBarrier, row.detailBufferBarrierLevel,
                 row.detailInterestBarrierTriggerValue, row.dateBookingStrikeDate,
                 row.dateBookingPricingDate, row.maturityDate, row.valuationDate, row.earlyStrike,
-                row.termSheet, row.finalPS, row.factSheet
             );
+            if (showDocTypeColumns) {
+                rowAsArray.push(row.termSheet, row.finalPS, row.factSheet);
+            }
             return rowAsArray;
         });
         const worksheet = XLSX.utils.aoa_to_sheet([headerRow1, headerRow2, ...dataAoA]);
