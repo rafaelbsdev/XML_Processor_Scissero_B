@@ -14,6 +14,17 @@ let consolidatedData = [];
 let headerStructure = [];
 let maxAssetsForExport = 0;
 let currentSort = { key: null, direction: 'asc' };
+let columnFilters = {}; 
+
+const debounce = (func, delay) => {
+    let timeoutId;
+    return (...args) => {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+            func.apply(this, args);
+        }, delay);
+    };
+};
 
 dropZone.addEventListener("dragover", (e) => {
     e.preventDefault();
@@ -32,16 +43,7 @@ btnPreview.addEventListener("click", previewExtractedXML);
 btnExport.addEventListener("click", exportExcel);
 
 productTypeFilter.addEventListener('change', (event) => {
-    const selectedType = event.target.value;
-    const tableRows = document.querySelectorAll('.dataTable tbody tr');
-    tableRows.forEach(row => {
-        const rowProductType = row.dataset.productType;
-        if (selectedType === 'all' || rowProductType === selectedType) {
-            row.style.display = '';
-        } else {
-            row.style.display = 'none';
-        }
-    });
+    renderTable(consolidatedData);
 });
 
 function updateFileList() {
@@ -302,6 +304,7 @@ async function previewExtractedXML() {
     loader.style.display = 'flex';
     dataTableContainer.style.display = 'none';
     currentSort = { key: null, direction: 'asc' };
+    columnFilters = {}; 
 
     try {
         const productMap = new Map();
@@ -335,6 +338,10 @@ async function previewExtractedXML() {
         consolidatedData = Array.from(productMap.values());
         if (consolidatedData.length > 0) {
             maxAssetsForExport = consolidatedData.reduce((max, item) => Math.max(max, item.assets ? item.assets.length : 0), 0);
+            
+            populateProductTypeFilter(consolidatedData);
+            document.querySelector('.filter-container').style.display = 'block';
+
             renderTable(consolidatedData);
             btnExport.style.display = "inline-flex";
             dataTableContainer.style.display = 'block';
@@ -350,13 +357,65 @@ async function previewExtractedXML() {
     }
 }
 
+function populateProductTypeFilter(data) {
+    const productTypes = new Set(data.map(item => item.productType).filter(Boolean));
+    productTypeFilter.innerHTML = '<option value="all">All Product Types</option>';
+    [...productTypes].sort().forEach(type => {
+        productTypeFilter.innerHTML += `<option value="${type}">${type}</option>`;
+    });
+}
+
 document.addEventListener('click', (event) => {
+    const filterIcon = event.target.closest('.filter-icon');
+    const clearButton = event.target.closest('.clear-filter');
+    const filterInput = event.target.closest('.column-filter-input'); 
     const header = event.target.closest('thead th[data-sort-key]');
-    if (header) {
+
+    if (filterIcon) {
+        event.preventDefault();
+        event.stopPropagation();
+        const th = filterIcon.closest('th');
+        th.querySelector('.header-title-text').style.display = 'none';
+        th.querySelector('.filter-icon').style.display = 'none';
+        th.querySelector('.filter-input-wrapper').style.display = 'flex';
+        th.querySelector('.column-filter-input').focus();
+    } else if (clearButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        const wrapper = clearButton.closest('.filter-input-wrapper');
+        const th = clearButton.closest('th');
+        const input = wrapper.querySelector('input');
+        const sortKey = input.dataset.filterKey;
+
+        columnFilters[sortKey] = '';
+        input.value = '';
+        wrapper.style.display = 'none';
+        th.querySelector('.header-title-text').style.display = '';
+        th.querySelector('.filter-icon').style.display = '';
+        
+        renderTable(consolidatedData); 
+    } else if (filterInput) { 
+        event.stopPropagation(); 
+    } else if (header) {
         const sortKey = header.dataset.sortKey;
         sortTable(sortKey);
     }
 });
+
+const debouncedRenderTable = debounce(() => {
+    renderTable(consolidatedData);
+}, 1000); 
+
+document.addEventListener('input', (event) => {
+    const input = event.target.closest('.column-filter-input');
+    if (input) {
+        const filterKey = input.dataset.filterKey;
+        const filterValue = input.value.toLowerCase();
+        columnFilters[filterKey] = filterValue;
+        debouncedRenderTable(); 
+    }
+});
+
 
 function getSortableValue(value) {
     if (value === null || value === undefined || value === "" || value === "N/A") {
@@ -375,6 +434,14 @@ function getSortableValue(value) {
         return num;
     }
     return stringValue.toLowerCase();
+}
+
+function getRawValue(row, key) {
+    if (key.startsWith('asset_')) {
+        const index = parseInt(key.split('_')[1], 10);
+        return (row.assets && row.assets[index]) ? row.assets[index] : "";
+    }
+    return row[key] || "";
 }
 
 function sortTable(sortKey) {
@@ -407,7 +474,6 @@ function sortTable(sortKey) {
     });
 
     renderTable(consolidatedData);
-    applyRowGrouping();
 }
 
 function applyRowGrouping() {
@@ -435,9 +501,7 @@ function applyRowGrouping() {
             const firstHeader = document.querySelector('thead th.sticky-col');
             if (firstHeader && firstHeader.getAttribute('rowspan') === '2') {
                  if (headerCells[i].closest('tr') === firstHeader.closest('tr').nextElementSibling) {
-                      // Se está na segunda linha e a sticky col ocupa 2, adiciona 1 ao index
                  } else if (headerCells[i].compareDocumentPosition(firstHeader) & Node.DOCUMENT_POSITION_FOLLOWING) {
-                     // Se está depois da sticky col na mesma linha (ou span)
                  }
 
             }
@@ -487,17 +551,38 @@ function applyRowGrouping() {
 }
 
 function renderTable(data) {
-    if (!data || data.length === 0) {
+    if (!data) {
         dataTable.innerHTML = "No data to display.";
         return;
     }
    
+    let dataToRender = [...data];
+
+    const selectedProductType = productTypeFilter.value;
+    if (selectedProductType !== 'all') {
+        dataToRender = dataToRender.filter(row => row.productType === selectedProductType);
+    }
+
+    const activeColumnFilters = Object.entries(columnFilters).filter(([key, value]) => value);
+    if (activeColumnFilters.length > 0) {
+        dataToRender = dataToRender.filter(row => {
+            return activeColumnFilters.every(([key, value]) => {
+                const rawValue = String(getRawValue(row, key)).toLowerCase();
+                return rawValue.includes(value);
+            });
+        });
+    }
+
+    if (dataToRender.length === 0 && activeColumnFilters.length === 0 && selectedProductType === 'all') {
+        dataTable.innerHTML = "No data to display."; 
+    }
+
     let assetHeaders = Array.from({ length: maxAssetsForExport }, (_, i) => ({ title: `Asset ${i + 1}`, sortKey: `asset_${i}`}));
     if (maxAssetsForExport === 1) assetHeaders = [{ title: "Asset", sortKey: 'asset_0' }];
     
     const hasBrenRenProducts = data.some(row => row.productType === 'BREN' || row.productType === 'REN');
-    
     const formatsInData = new Set(data.map(row => row.format));
+
     let idColumnTitle = "CUSIP / ISIN";
     let showSecondIsinColumn = false;
     const showDocTypeColumns = !(formatsInData.size === 1 && formatsInData.has('Barclays'));
@@ -549,60 +634,100 @@ function renderTable(data) {
     }
 
     let htmlTable = "<table><thead><tr class='first-tr'>";
+    
     headerStructure.forEach(({ title, children, isSticky, sortKey }) => {
         const span = children ? `colspan="${children.length}"` : `rowspan="2"`;
         const stickyClass = isSticky ? 'sticky-col' : '';
         const categoryClass = children ? 'category' : '';
-        const sortKeyAttr = isSticky && !children ? `data-sort-key="${sortKey}"` : ''; 
-        htmlTable += `<th class="${stickyClass} ${categoryClass}" ${span} ${sortKeyAttr}>${title.toUpperCase()}</th>`;
+        
+        const sortKeyAttr = !children && sortKey ? `data-sort-key="${sortKey}"` : ''; 
+        
+        htmlTable += `<th class="${stickyClass} ${categoryClass}" ${span} ${sortKeyAttr}>`;
+        
+        if (!children && sortKey) { 
+            const filterValue = columnFilters[sortKey] || '';
+            const titleStyle = filterValue ? 'style="display:none;"' : '';
+            const inputStyle = filterValue ? 'style="display:flex;"' : 'style="display:none;"'; 
+
+            htmlTable += `<span class="header-title-text" ${titleStyle}>${title.toUpperCase()}</span>`;
+            htmlTable += `<span class="filter-icon" title="Filter column" ${titleStyle}>&#128269;</span>`;
+            htmlTable += `<div class="filter-input-wrapper" ${inputStyle}>
+                            <input type="text" class="column-filter-input" data-filter-key="${sortKey}" value="${filterValue}" placeholder="Filter...">
+                            <span class="clear-filter" title="Clear filter">×</span>
+                          </div>`;
+        } else {
+            htmlTable += title.toUpperCase();
+        }
+        htmlTable += `</th>`;
     });
     htmlTable += "</tr><tr class='second-tr'>";
+    
     headerStructure.forEach(({ children }) => {
         if (Array.isArray(children)) { 
-            children.forEach(child => (htmlTable += `<th data-sort-key="${child.sortKey}">${child.title}</th>`));
+            children.forEach(child => {
+                const sortKey = child.sortKey;
+                const filterValue = columnFilters[sortKey] || '';
+                const titleStyle = filterValue ? 'style="display:none;"' : '';
+                const inputStyle = filterValue ? 'style="display:flex;"' : 'style="display:none;"';
+
+                htmlTable += `<th data-sort-key="${sortKey}">`;
+                htmlTable += `<span class="header-title-text" ${titleStyle}>${child.title}</span>`;
+                htmlTable += `<span class="filter-icon" title="Filter column" ${titleStyle}>&#128269;</span>`;
+                htmlTable += `<div class="filter-input-wrapper" ${inputStyle}>
+                                <input type="text" class="column-filter-input" data-filter-key="${sortKey}" value="${filterValue}" placeholder="Filter...">
+                                <span class="clear-filter" title="Clear filter">×</span>
+                              </div>`;
+                htmlTable += `</th>`;
+            });
         }
     });
     htmlTable += "</tr></thead><tbody>";
-    data.forEach(row => {
-        htmlTable += `<tr data-product-type="${row.productType || ''}">`;
-        htmlTable += `<td class="sticky-col">${row.prodCusip || row.identifier}</td>`;
-        if (showSecondIsinColumn) {
-            htmlTable += `<td>${row.prodIsin || ""}</td>`;
-        }
-        
-        htmlTable += `<td>${row.underlyingAssetType || ""}</td>`;
-        for (let i = 0; i < maxAssetsForExport; i++) {
-             htmlTable += `<td>${(row.assets && row.assets[i]) ? row.assets[i] : ""}</td>`;
-        }
-        htmlTable += `<td>${row.productType || ""}</td>`;
-        htmlTable += `<td>${row.productClient || ""}</td>`;
-        htmlTable += `<td>${row.productTenor || ""}</td>`;
-        htmlTable += `<td>${row.couponFrequency || ""}</td>`;
-        htmlTable += `<td>${row.couponBarrierLevel || ""}</td>`;
-        htmlTable += `<td>${row.couponMemory || ""}</td>`;
-        htmlTable += `<td>${row.callFrequency || ""}</td>`;
-        htmlTable += `<td>${row.callNonCallPeriod || ""}</td>`;
-        htmlTable += `<td>${row.upsideCap || ""}</td>`;
-        htmlTable += `<td>${row.upsideLeverage || ""}</td>`;
-        if (hasBrenRenProducts) {
-            htmlTable += `<td>${row.detailCappedUncapped || ""}</td>`;
-        }
-        htmlTable += `<td>${row.detailBufferKIBarrier || ""}</td>`;
-        htmlTable += `<td>${row.detailBufferBarrierLevel || ""}</td>`;
-        htmlTable += `<td>${row.detailInterestBarrierTriggerValue || ""}</td>`;
-        htmlTable += `<td>${row.dateBookingStrikeDate || ""}</td>`;
-        htmlTable += `<td>${row.dateBookingPricingDate || ""}</td>`;
-        htmlTable += `<td>${row.maturityDate || ""}</td>`;
-        htmlTable += `<td>${row.valuationDate || ""}</td>`;
-        htmlTable += `<td>${row.earlyStrike || ""}</td>`;
-        
-        if (showDocTypeColumns) {
-            htmlTable += `<td>${row.termSheet || ""}</td>`;
-            htmlTable += `<td>${row.finalPS || ""}</td>`;
-            htmlTable += `<td>${row.factSheet || ""}</td>`;
-        }
-        htmlTable += "</tr>";
-    });
+
+    if (dataToRender.length === 0) {
+        const totalCols = headerStructure.reduce((acc, h) => acc + (h.children ? h.children.length : 1), 0);
+        htmlTable += `<tr><td colspan="${totalCols}" style="text-align: center; padding: 2rem;">No data matches the current filters.</td></tr>`;
+    } else {
+        dataToRender.forEach(row => {
+            htmlTable += `<tr data-product-type="${row.productType || ''}">`;
+            htmlTable += `<td class="sticky-col">${row.prodCusip || row.identifier}</td>`;
+            if (showSecondIsinColumn) {
+                htmlTable += `<td>${row.prodIsin || ""}</td>`;
+            }
+            
+            htmlTable += `<td>${row.underlyingAssetType || ""}</td>`;
+            for (let i = 0; i < maxAssetsForExport; i++) {
+                 htmlTable += `<td>${(row.assets && row.assets[i]) ? row.assets[i] : ""}</td>`;
+            }
+            htmlTable += `<td>${row.productType || ""}</td>`;
+            htmlTable += `<td>${row.productClient || ""}</td>`;
+            htmlTable += `<td>${row.productTenor || ""}</td>`;
+            htmlTable += `<td>${row.couponFrequency || ""}</td>`;
+            htmlTable += `<td>${row.couponBarrierLevel || ""}</td>`;
+            htmlTable += `<td>${row.couponMemory || ""}</td>`;
+            htmlTable += `<td>${row.callFrequency || ""}</td>`;
+            htmlTable += `<td>${row.callNonCallPeriod || ""}</td>`;
+            htmlTable += `<td>${row.upsideCap || ""}</td>`;
+            htmlTable += `<td>${row.upsideLeverage || ""}</td>`;
+            if (hasBrenRenProducts) {
+                htmlTable += `<td>${row.detailCappedUncapped || ""}</td>`;
+            }
+            htmlTable += `<td>${row.detailBufferKIBarrier || ""}</td>`;
+            htmlTable += `<td>${row.detailBufferBarrierLevel || ""}</td>`;
+            htmlTable += `<td>${row.detailInterestBarrierTriggerValue || ""}</td>`;
+            htmlTable += `<td>${row.dateBookingStrikeDate || ""}</td>`;
+            htmlTable += `<td>${row.dateBookingPricingDate || ""}</td>`;
+            htmlTable += `<td>${row.maturityDate || ""}</td>`;
+            htmlTable += `<td>${row.valuationDate || ""}</td>`;
+            htmlTable += `<td>${row.earlyStrike || ""}</td>`;
+            
+            if (showDocTypeColumns) {
+                htmlTable += `<td>${row.termSheet || ""}</td>`;
+                htmlTable += `<td>${row.finalPS || ""}</td>`;
+                htmlTable += `<td>${row.factSheet || ""}</td>`;
+            }
+            htmlTable += "</tr>";
+        });
+    }
     htmlTable += "</tbody></table>";
     dataTable.innerHTML = htmlTable;
 
@@ -616,29 +741,50 @@ function renderTable(data) {
             activeHeader.classList.add(currentSort.direction === 'asc' ? 'sorted-asc' : 'sorted-desc');
         }
     }
+
+    applyRowGrouping();
 }
 
 function exportExcel() {
-    const selectedType = productTypeFilter.value;
-    let dataToExport = consolidatedData;
+    let dataToExport = [...consolidatedData]; 
 
-    if (selectedType !== 'all') {
-        dataToExport = dataToExport.filter(row => row.productType === selectedType);
+    const selectedProductType = productTypeFilter.value;
+    if (selectedProductType !== 'all') {
+        dataToExport = dataToExport.filter(row => row.productType === selectedProductType);
+    }
+
+    const activeColumnFilters = Object.entries(columnFilters).filter(([key, value]) => value);
+    if (activeColumnFilters.length > 0) {
+        dataToExport = dataToExport.filter(row => {
+            return activeColumnFilters.every(([key, value]) => {
+                const rawValue = String(getRawValue(row, key)).toLowerCase();
+                return rawValue.includes(value);
+            });
+        });
     }
 
     if (dataToExport.length === 0) {
         message.innerHTML = "No data to export for the selected filter.";
         return;
     }
-    const groupedData = dataToExport.reduce((acc, row) => {
-        const key = row.productType || 'Uncategorized';
-        if (!acc[key]) acc[key] = [];
-        acc[key].push(row);
-        return acc;
-    }, {});
+
+    let groupedData;
+    if (selectedProductType === 'all') {
+        groupedData = dataToExport.reduce((acc, row) => {
+            const key = row.productType || 'Uncategorized';
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(row);
+            return acc;
+        }, {});
+    } else {
+        groupedData = { [selectedProductType]: dataToExport };
+    }
+    
     const workbook = XLSX.utils.book_new();
     for (const productType in groupedData) {
         const sheetData = groupedData[productType];
+        if (sheetData.length === 0) continue; 
+        
         const sheetName = sanitizeSheetName(productType);
         
         const format = sheetData[0]?.format;

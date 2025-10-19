@@ -11,6 +11,8 @@
     --error-color: #e57373;
     --group-a-bg: transparent; 
     --group-b-bg: rgba(0, 0, 0, 0.1);
+    --group-a-sticky-bg: #1e293b; 
+    --group-b-sticky-bg: #242d41; 
 }
 
 *, *::before, *::after {
@@ -302,13 +304,15 @@ td {
     border-bottom: 1px solid var(--panel-border);
 }
 
-thead .second-tr th {
+thead .second-tr th:not(.sticky-col) {
     cursor: pointer;
     position: relative;
 }
 
-thead .second-tr th::after {
+thead .second-tr th::after,
+thead .first-tr th[rowspan="2"][data-sort-key]::after {
     content: '';
+    display: none;
     position: absolute;
     right: 10px;
     top: 50%;
@@ -317,19 +321,34 @@ thead .second-tr th::after {
     border: 4px solid transparent;
 }
 
-thead .second-tr th.sorted-asc::after {
+thead .second-tr th.sorted-asc::after,
+thead .first-tr th[rowspan="2"][data-sort-key].sorted-asc::after {
     border-bottom-color: var(--text-secondary);
 }
-
-thead .second-tr th.sorted-desc::after {
+thead .second-tr th.sorted-desc::after,
+thead .first-tr th[rowspan="2"][data-sort-key].sorted-desc::after {
     border-top-color: var(--text-secondary);
 }
 
 tbody tr.group-a td { background-color: var(--group-a-bg); }
 tbody tr.group-b td { background-color: var(--group-b-bg); }
 
+tbody td.sticky-col {
+    background-color: var(--group-a-sticky-bg);
+}
+tbody tr.group-a td.sticky-col {
+    background-color: var(--group-a-sticky-bg);
+}
+tbody tr.group-b td.sticky-col {
+    background-color: var(--group-b-sticky-bg);
+}
+
 tbody tr:hover td {
     background-color: rgba(0, 119, 200, 0.1);
+}
+tbody tr:hover td.sticky-col {
+    background-color: rgba(0, 119, 200, 0.1);
+    z-index: 3;
 }
 
 .sticky-col {
@@ -342,14 +361,10 @@ tbody .sticky-col {
     z-index: 1;
 }
 
-tbody tr:hover .sticky-col {
-    z-index: 3;
-    background-color: rgba(0, 119, 200, 0.1);
-}
-
 thead .sticky-col {
     z-index: 4;
     background-color: var(--dark-bg);
+    cursor: pointer; 
 }
 
 thead .sticky-col.category {
@@ -364,10 +379,106 @@ thead .sticky-col.category {
     font-size: 0.9rem;
 }
 
-tbody tr:nth-child(even) .sticky-col {
-    background-color: #242d41;
+thead .second-tr th:not(.sticky-col),
+thead .first-tr th[rowspan="2"]:not(.sticky-col) {
+    position: relative;
 }
 
-tbody tr:nth-child(odd) .sticky-col {
-    background-color: #334155;
+thead .second-tr th[data-sort-key],
+thead .first-tr th[rowspan="2"][data-sort-key] {
+    min-width: 150px; 
+}
+
+
+.filter-icon {
+    position: absolute;
+    right: 5px; 
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0.6;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: opacity 0.2s ease;
+}
+
+.filter-icon:hover {
+    opacity: 1;
+}
+
+
+.filter-input-wrapper {
+    display: flex; 
+    align-items: center;
+    position: relative; 
+    width: 100%;
+}
+
+.column-filter-input {
+    width: 100%;
+    background-color: var(--panel-bg); 
+    border: 1px solid var(--scissero-blue);
+    color: var(--text-primary);
+    padding: 4px 24px 4px 8px; 
+    border-radius: 4px;
+    font-family: var(--font-family);
+    font-size: 0.85rem;
+    box-sizing: border-box; 
+}
+
+.clear-filter {
+    position: absolute;
+    right: 5px; 
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 1.2rem;
+    line-height: 1;
+    font-weight: bold;
+    z-index: 5; 
+}
+
+.clear-filter:hover {
+    color: var(--text-primary);
+}
+
+thead .second-tr th[data-sort-key="productClient"],
+thead .second-tr th[data-sort-key="productTenor"],
+thead .second-tr th[data-sort-key="upsideCap"] {
+    min-width: 90px;
+}
+
+thead .second-tr th[data-sort-key="couponMemory"],
+thead .second-tr th[data-sort-key="finalPS"] {
+    min-width: 100px;
+}
+
+thead .second-tr th[data-sort-key="factSheet"] {
+    min-width: 125px;
+}
+
+thead .first-tr th[data-sort-key="prodCusip"],
+thead .first-tr th[data-sort-key="identifier"],
+thead .first-tr th[data-sort-key="prodIsin"],
+thead .second-tr th[data-sort-key="couponFrequency"] {
+    min-width: 130px;
+}
+
+thead .second-tr th[data-sort-key="dateBookingStrikeDate"],
+thead .second-tr th[data-sort-key="dateBookingPricingDate"],
+thead .second-tr th[data-sort-key="maturityDate"],
+thead .second-tr th[data-sort-key="valuationDate"] {
+    min-width: 140px;
+}
+
+thead .second-tr th[data-sort-key="callNonCallPeriod"] {
+    min-width: 165px;
+}
+
+thead .second-tr th[data-sort-key="detailBufferBarrierLevel"] {
+    min-width: 175px;
+}
+
+thead .second-tr th[data-sort-key="detailCappedUncapped"] {
+    min-width: 180px;
 }
