@@ -207,38 +207,33 @@ export function updateTableRows(consolidatedData, tableRowsMap, columnFilters, p
 
 export function adjustHeaderWidths() {
     const headers = document.querySelectorAll('thead th[data-sort-key]');
-    const ICON_SPACE_BUFFER = 55;     const EXTRA_PADDING_COLS = [         'detailCappedUncapped',
-        'detailBufferKIBarrier',         'detailBufferBarrierLevel',
-        'callMonitoringType',
-        'couponRateAnnualised',
-        'callNonCallPeriod'
-    ];
-    const EXTRA_PADDING_AMOUNT = 10;     const baseMinWidth = 150; 
+    const baseMinWidth = 160;
+    const FILTER_ICON_WIDTH = 15;
+    const SORT_ARROW_SPACE = 25;
+    const FINAL_GAP = 10;
+
+    const totalIconAndGapSpace = FILTER_ICON_WIDTH + SORT_ARROW_SPACE + FINAL_GAP;
+
     headers.forEach(th => {
         const titleSpan = th.querySelector('.header-title-text');
         const sortKey = th.dataset.sortKey;
 
-        if (titleSpan && sortKey) {
-            const textWidth = titleSpan.scrollWidth;
+        if (titleSpan) {
+            const textWidth = Math.ceil(titleSpan.getBoundingClientRect().width);
 
-                        const computedStyle = window.getComputedStyle(th);
+            const computedStyle = window.getComputedStyle(th);
             const paddingLeft = parseFloat(computedStyle.paddingLeft);
             const paddingRight = parseFloat(computedStyle.paddingRight);
             const horizontalPadding = paddingLeft + paddingRight;
 
-                        let calculatedWidth = textWidth + ICON_SPACE_BUFFER + horizontalPadding;
+            let calculatedWidth = textWidth + totalIconAndGapSpace + horizontalPadding;
 
-                        let widthToApply = Math.max(baseMinWidth, calculatedWidth);
+            let widthToApply = Math.max(baseMinWidth, calculatedWidth);
 
-                        if (EXTRA_PADDING_COLS.includes(sortKey)) {
-                widthToApply += EXTRA_PADDING_AMOUNT;
-            }
-
-                        th.style.minWidth = `${widthToApply}px`;
+            th.style.minWidth = `${widthToApply}px`;
         }
     });
 }
-
 
 export function renderInitialTable(dataTable, data, maxAssetsForExport, columnFilters, currentSort, productTypeFilter) {
 
