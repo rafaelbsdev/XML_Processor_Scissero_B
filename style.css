@@ -9,10 +9,11 @@
     --font-family: 'Poppins', sans-serif;
     --success-color: #6ee7b7;
     --error-color: #e57373;
-    --group-a-bg: transparent; 
+    --group-a-bg: transparent;
     --group-b-bg: rgba(0, 0, 0, 0.1);
-    --group-a-sticky-bg: #1e293b; 
-    --group-b-sticky-bg: #242d41; 
+
+    --group-a-sticky-bg: #1e293b;
+    --group-b-sticky-bg: #242d41;
 }
 
 *, *::before, *::after {
@@ -271,7 +272,7 @@ th, td {
 thead {
     position: sticky;
     top: 0;
-    z-index: 2; 
+    z-index: 2;
 }
 
 th {
@@ -364,7 +365,7 @@ tbody .sticky-col {
 thead .sticky-col {
     z-index: 4;
     background-color: var(--dark-bg);
-    cursor: pointer; 
+    cursor: pointer;
 }
 
 thead .sticky-col.category {
@@ -386,48 +387,53 @@ thead .first-tr th[rowspan="2"]:not(.sticky-col) {
 
 thead .second-tr th[data-sort-key],
 thead .first-tr th[rowspan="2"][data-sort-key] {
-    min-width: 150px; 
+    min-width: 150px;
 }
 
 
 .filter-icon {
     position: absolute;
-    right: 5px; 
+    right: 5px;
     top: 50%;
     transform: translateY(-50%);
     opacity: 0.6;
     cursor: pointer;
     font-size: 0.8rem;
-    transition: opacity 0.2s ease;
+    transition: opacity 0.2s ease, color 0.2s ease;
 }
 
 .filter-icon:hover {
     opacity: 1;
 }
 
+.filter-icon.active {
+    color: var(--scissero-blue);
+    opacity: 1;
+}
+
 
 .filter-input-wrapper {
-    display: flex; 
+    display: flex;
     align-items: center;
-    position: relative; 
+    position: relative;
     width: 100%;
 }
 
 .column-filter-input {
     width: 100%;
-    background-color: var(--panel-bg); 
+    background-color: var(--panel-bg);
     border: 1px solid var(--scissero-blue);
     color: var(--text-primary);
-    padding: 4px 24px 4px 8px; 
+    padding: 4px 24px 4px 8px;
     border-radius: 4px;
     font-family: var(--font-family);
     font-size: 0.85rem;
-    box-sizing: border-box; 
+    box-sizing: border-box;
 }
 
 .clear-filter {
     position: absolute;
-    right: 5px; 
+    right: 5px;
     top: 50%;
     transform: translateY(-50%);
     color: var(--text-secondary);
@@ -435,50 +441,82 @@ thead .first-tr th[rowspan="2"][data-sort-key] {
     font-size: 1.2rem;
     line-height: 1;
     font-weight: bold;
-    z-index: 5; 
 }
 
 .clear-filter:hover {
     color: var(--text-primary);
 }
 
-thead .second-tr th[data-sort-key="productClient"],
-thead .second-tr th[data-sort-key="productTenor"],
-thead .second-tr th[data-sort-key="upsideCap"] {
-    min-width: 90px;
+tbody tr.hidden {
+    display: none;
 }
 
-thead .second-tr th[data-sort-key="couponMemory"],
-thead .second-tr th[data-sort-key="finalPS"] {
-    min-width: 100px;
+thead .second-tr th:not(.sticky-col),
+thead .first-tr th[rowspan="2"]:not(.sticky-col) {
+    position: relative;
 }
 
-thead .second-tr th[data-sort-key="factSheet"] {
-    min-width: 125px;
+thead .second-tr th[data-sort-key],
+thead .first-tr th[rowspan="2"][data-sort-key] {
+    min-width: 150px;
 }
 
-thead .first-tr th[data-sort-key="prodCusip"],
-thead .first-tr th[data-sort-key="identifier"],
-thead .first-tr th[data-sort-key="prodIsin"],
-thead .second-tr th[data-sort-key="couponFrequency"] {
-    min-width: 130px;
+.filter-icon {
+    position: absolute;
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0.6;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: opacity 0.2s ease, color 0.2s ease;
 }
 
-thead .second-tr th[data-sort-key="dateBookingStrikeDate"],
-thead .second-tr th[data-sort-key="dateBookingPricingDate"],
-thead .second-tr th[data-sort-key="maturityDate"],
-thead .second-tr th[data-sort-key="valuationDate"] {
-    min-width: 140px;
+.filter-icon:hover {
+    opacity: 1;
 }
 
-thead .second-tr th[data-sort-key="callNonCallPeriod"] {
-    min-width: 165px;
+.filter-icon.active {
+    color: var(--scissero-blue);
+    opacity: 1;
 }
 
-thead .second-tr th[data-sort-key="detailBufferBarrierLevel"] {
-    min-width: 175px;
+
+.filter-input-wrapper {
+    display: flex;
+    align-items: center;
+    position: relative;
+    width: 100%;
 }
 
-thead .second-tr th[data-sort-key="detailCappedUncapped"] {
-    min-width: 180px;
+.column-filter-input {
+    width: 100%;
+    background-color: var(--panel-bg);
+    border: 1px solid var(--scissero-blue);
+    color: var(--text-primary);
+    padding: 4px 24px 4px 8px;
+    border-radius: 4px;
+    font-family: var(--font-family);
+    font-size: 0.85rem;
+    box-sizing: border-box;
+}
+
+.clear-filter {
+    position: absolute;
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 1.2rem;
+    line-height: 1;
+    font-weight: bold;
+}
+
+.clear-filter:hover {
+    color: var(--text-primary);
+}
+
+tbody tr.hidden {
+    display: none;
 }
