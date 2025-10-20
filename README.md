@@ -1,3 +1,5 @@
+[Read this document in English](README.en.md)
+
 # Scenario Extractor
 
 ## Descrição
