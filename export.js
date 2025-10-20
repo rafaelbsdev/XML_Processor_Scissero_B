@@ -1,11 +1,13 @@
 import { getRawValue } from './table.js';
 
 const sanitizeSheetName = (name) => {
+    
+    if (!name) return 'Uncategorized';
     return name.replace(/[\\/*?\[\]:]/g, "").substring(0, 31);
 };
 
 export function exportExcel(consolidatedData, columnFilters, productTypeFilter, maxAssetsForExport) {
-    let dataToExport = [...consolidatedData]; 
+    let dataToExport = [...consolidatedData];
 
     const selectedProductType = productTypeFilter.value;
     if (selectedProductType !== 'all') {
@@ -30,7 +32,7 @@ export function exportExcel(consolidatedData, columnFilters, productTypeFilter, 
     let groupedData;
     if (selectedProductType === 'all') {
         groupedData = dataToExport.reduce((acc, row) => {
-            const key = row.productType || 'Uncategorized';
+            const key = row.productType || 'Uncategorized'; 
             if (!acc[key]) acc[key] = [];
             acc[key].push(row);
             return acc;
@@ -38,43 +40,54 @@ export function exportExcel(consolidatedData, columnFilters, productTypeFilter, 
     } else {
         groupedData = { [selectedProductType]: dataToExport };
     }
-    
+
     const workbook = XLSX.utils.book_new();
-    for (const productType in groupedData) {
+
+    
+    const sortedProductTypes = Object.keys(groupedData).sort((a, b) => groupedData[b].length - groupedData[a].length);
+
+        sortedProductTypes.forEach(productType => {
         const sheetData = groupedData[productType];
-        if (sheetData.length === 0) continue; 
-        
+        if (sheetData.length === 0) return; 
+
         const sheetName = sanitizeSheetName(productType);
         
-        const format = sheetData[0]?.format;
+        const showConditionalCols = sheetData.some(row => row.format !== 'Barclays');
+
+                const format = sheetData[0]?.format;
         const idColumnTitle = format === 'Barclays' ? 'ISIN' : 'CUSIP';
-        const showSecondIsinColumn = format === 'pyrEvoDoc';
+        const showSecondIsinColumn = showConditionalCols && format === 'pyrEvoDoc'; 
         const isBrenRenSheet = sheetData.some(row => row.productType === 'BREN' || row.productType === 'REN');
-        const showDocTypeColumns = (format !== 'Barclays');
+        const showDocTypeColumns = showConditionalCols; 
 
         let assetHeaders = Array.from({ length: maxAssetsForExport }, (_, i) => `Asset ${i + 1}`);
         if (maxAssetsForExport === 1) assetHeaders = ["Asset"];
-        
+
         let initialHeaders = [{ title: idColumnTitle }];
         if (showSecondIsinColumn) initialHeaders.push({ title: "ISIN" });
         const detailsChildren = ["Upside Cap", "Upside Leverage"];
         if (isBrenRenSheet) detailsChildren.push("Capped / Uncapped");
         detailsChildren.push("Buffer / Barrier", "Barrier/Buffer Level", "Interest v Barrier/Buffer");
+
         const callChildren = ["Frequency", "Non-call period"];
+        if (showConditionalCols) { callChildren.push("Call Monitoring Type"); } 
+
+        const couponChildren = ["Frequency", "Barrier Level", "Memory"];
+        if (showConditionalCols) { couponChildren.push("Coupon rate annualised"); } 
 
         const localHeaderStructure = [
             ...initialHeaders,
             { title: "Underlying", children: ["Asset Type", ...assetHeaders] },
             { title: "Product Details", children: ["Product Type", "Client", "Tenor"] },
-            { title: "Coupons", children: ["Frequency", "Barrier Level", "Memory"] },
-            { title: "CALL", children: callChildren },
+            { title: "Coupons", children: couponChildren }, 
+            { title: "CALL", children: callChildren },       
             { title: "Details", children: detailsChildren },
             { title: "DATES IN BOOKINGS", children: ["Strike", "Pricing", "Maturity", "Valuation", "Early Strike"] }
         ];
         if (showDocTypeColumns) {
             localHeaderStructure.push({ title: "Doc Type", children: ["Term Sheet", "Final PS", "Fact Sheet"] });
         }
-        
+
         const headerRow1 = [], headerRow2 = [];
         localHeaderStructure.forEach(h => {
             headerRow1.push(h.title.toUpperCase());
@@ -85,6 +98,7 @@ export function exportExcel(consolidatedData, columnFilters, productTypeFilter, 
                 headerRow2.push(null);
             }
         });
+        
         const dataAoA = sheetData.map(row => {
             const rowAsArray = [];
             rowAsArray.push(row.prodCusip || row.identifier);
@@ -92,21 +106,29 @@ export function exportExcel(consolidatedData, columnFilters, productTypeFilter, 
             rowAsArray.push(row.underlyingAssetType);
             for (let i = 0; i < maxAssetsForExport; i++) rowAsArray.push(row.assets && row.assets[i] ? row.assets[i] : "");
             rowAsArray.push(
-                row.productType, row.productClient, row.productTenor, row.couponFrequency,
-                row.couponBarrierLevel, row.couponMemory, row.callFrequency, row.callNonCallPeriod,
+                row.productType, row.productClient, row.productTenor,
+                row.couponFrequency, row.couponBarrierLevel, row.couponMemory
+            );
+            if (showConditionalCols) rowAsArray.push(row.couponRateAnnualised || ""); 
+            rowAsArray.push(
+                row.callFrequency, row.callNonCallPeriod
+            );
+             if (showConditionalCols) rowAsArray.push(row.callMonitoringType || ""); 
+            rowAsArray.push(
                 row.upsideCap, row.upsideLeverage
             );
-            if (isBrenRenSheet) rowAsArray.push(row.detailCappedUncapped);
+            if (isBrenRenSheet) rowAsArray.push(row.detailCappedUncapped || "");
             rowAsArray.push(
                 row.detailBufferKIBarrier, row.detailBufferBarrierLevel,
                 row.detailInterestBarrierTriggerValue, row.dateBookingStrikeDate,
                 row.dateBookingPricingDate, row.maturityDate, row.valuationDate, row.earlyStrike,
             );
             if (showDocTypeColumns) {
-                rowAsArray.push(row.termSheet, row.finalPS, row.factSheet);
+                rowAsArray.push(row.termSheet || "", row.finalPS || "", row.factSheet || "");
             }
             return rowAsArray;
         });
+        
         const worksheet = XLSX.utils.aoa_to_sheet([headerRow1, headerRow2, ...dataAoA]);
         const merges = [];
         let colIndex = 0;
@@ -120,7 +142,7 @@ export function exportExcel(consolidatedData, columnFilters, productTypeFilter, 
             }
         });
         worksheet['!merges'] = merges;
-        
+
         const colWidths = [];
         Object.keys(worksheet).forEach(cellAddress => {
             if (cellAddress[0] === '!') return;
@@ -136,13 +158,25 @@ export function exportExcel(consolidatedData, columnFilters, productTypeFilter, 
                 worksheet[cellAddress].s.fill = { fgColor: { rgb: "DDEBF7" } };
             }
             const value = worksheet[cellAddress].v;
-            const width = value ? value.toString().length + 2 : 12;
-            if (!colWidths[cell.c] || width > colWidths[cell.c].wch) {
-                colWidths[cell.c] = { wch: width };
+            
+             const defaultWidth = 12;
+             let width = defaultWidth;
+             if (value) {
+                
+                const stringValue = String(value);
+                
+                const estimatedWidth = stringValue.length * 0.8 + 4;
+                 width = Math.max(defaultWidth, Math.min(estimatedWidth, 50)); 
+             }
+
+            if (!colWidths[cell.c] || width > (colWidths[cell.c].wch || 0)) {
+                colWidths[cell.c] = { wch: Math.ceil(width) }; 
             }
         });
         worksheet['!cols'] = colWidths;
+
         XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
-    }
+    }); 
+
     XLSX.writeFile(workbook, "ExtractedXML_Data_Global.xlsx");
 }

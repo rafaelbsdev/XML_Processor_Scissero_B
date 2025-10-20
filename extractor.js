@@ -41,6 +41,8 @@ export const extractPyrEvoDocData = (xmlNode) => {
     const product = xmlNode.querySelector("product");
     const tradableForm = xmlNode.querySelector("tradableForm");
     const asset = xmlNode.querySelector("asset");
+    const reverseConvertible = product.querySelector("reverseConvertible");
+
     const getUnderlying = (assetNode, key) => {
         const assets = assetNode.querySelectorAll("assets");
         if (typeof key === "number") return findFirstContent(assets[key], ["bloombergTickerSuffix"]);
@@ -56,7 +58,7 @@ export const extractPyrEvoDocData = (xmlNode) => {
             const months = parseInt(tenorMonths, 10);
             return months > 12 && months % 12 === 0 ? `${months / 12}Y` : `${months}M`;
         }
-        return findFirstContent(productNode, ["bufferedReturnEnhancedNote > productType", "reverseConvertible > description", "productName"]);
+        return findFirstContent(productNode, ["reverseConvertible > description", "productName", "bufferedReturnEnhancedNote > productType"]);
     };
     const upsideLeverage = (productNode) => {
         return findFirstContent(productNode, ["bufferedReturnEnhancedNote > upsideLeverage"]) || "N/A";
@@ -76,6 +78,9 @@ export const extractPyrEvoDocData = (xmlNode) => {
             case "memory":
                 const hasMemory = findFirstContent(couponSchedule, ["hasMemory"]);
                 return hasMemory ? (hasMemory === "false" ? "N" : "Y") : "N/A";
+            case "annualisedRate":
+                 const rate = findFirstContent(couponSchedule, ["annualizedRate > level"]);
+                 return (rate && `${parseFloat(rate)}%`) || "N/A";
             default: return "N/A";
         }
     };
@@ -107,34 +112,45 @@ export const extractPyrEvoDocData = (xmlNode) => {
                     return buffer ? `${100 - parseFloat(buffer)}%` : "";
                 case "frequency": return "At Maturity";
                 case "noncall": return "N/A";
+                 case "callMonitoring": return "N/A";
             }
         }
-        const isBufferType = parseFloat(findFirstContent(productNode, ["reverseConvertible > strike > level"])) < 100;
-        const phoenixType = productNode.querySelector("reverseConvertible > issuerCallable") ? "issuerCallable" : "autocallSchedule";
+        const rcNode = productNode.querySelector("reverseConvertible");
+        if (!rcNode) {
+            return type === "callMonitoring" ? "N/A" : "";
+        }
+        const isBufferType = parseFloat(findFirstContent(rcNode, ["strike > level"])) < 100;
+        const phoenixTypeNode = rcNode.querySelector("issuerCallable") || rcNode.querySelector("autocallSchedule");
+        const phoenixType = phoenixTypeNode ? (phoenixTypeNode.tagName === "issuerCallable" ? "issuerCallable" : "autocallSchedule") : null;
+
         switch (type) {
             case "strikelevel": return isBufferType ? "Buffer" : "KI Barrier";
             case "bufferlevel":
                 if (isBufferType) {
-                    const bufferLevelStr = findFirstContent(productNode, ["reverseConvertible > buffer > level"]);
+                    const bufferLevelStr = findFirstContent(rcNode, ["buffer > level"]);
                     return bufferLevelStr ? `${parseFloat(bufferLevelStr)}%` : "";
                 } else {
-                    const kiBarrierStr = findFirstContent(productNode, ["knockInBarrier > barrierSchedule > barrierLevel > level"]);
+                    const kiBarrierStr = findFirstContent(rcNode, ["knockInBarrier > barrierSchedule > barrierLevel > level"]);
                     return kiBarrierStr ? `${parseFloat(kiBarrierStr)}%` : "";
                 }
-            case "frequency": return findFirstContent(productNode, [`reverseConvertible > ${phoenixType} > barrierSchedule > frequency`]);
+            case "frequency":
+                 return phoenixType ? findFirstContent(phoenixTypeNode, ["barrierSchedule > frequency"]) : "N/A";
             case "noncall":
+                if (!phoenixType) return "N/A";
                 const issueDateStr = findFirstContent(tradableFormNode, ["securitized > issuance > issueDate"]);
-                const firstCallDateStr = findFirstContent(productNode, [`reverseConvertible > ${phoenixType} > barrierSchedule > firstDate`]);
+                const firstCallDateStr = findFirstContent(phoenixTypeNode, ["barrierSchedule > firstDate"]);
                 return calculateTenor(issueDateStr, firstCallDateStr);
+            case "callMonitoring":
+                return phoenixTypeNode ? findFirstContent(phoenixTypeNode, ["monitoringType"]) : "N/A";
             default:
-                const interestBarrierLevel = parseFloat(findFirstContent(productNode, ["reverseConvertible > couponSchedule > contigentLevelLegal > level"]));
+                const interestBarrierLevel = parseFloat(findFirstContent(rcNode, ["couponSchedule > contigentLevelLegal > level"]));
                 let comparisonLevel;
                 let comparisonLabel;
                 if (isBufferType) {
-                    comparisonLevel = parseFloat(findFirstContent(productNode, ["reverseConvertible > buffer > level"]));
+                    comparisonLevel = parseFloat(findFirstContent(rcNode, ["buffer > level"]));
                     comparisonLabel = "Buffer";
                 } else {
-                    comparisonLevel = parseFloat(findFirstContent(productNode, ["knockInBarrier > barrierSchedule > barrierLevel > level"]));
+                    comparisonLevel = parseFloat(findFirstContent(rcNode, ["knockInBarrier > barrierSchedule > barrierLevel > level"]));
                     comparisonLabel = "KI Barrier";
                 }
                 if (isNaN(interestBarrierLevel) || isNaN(comparisonLevel)) return "N/A";
@@ -155,18 +171,32 @@ export const extractPyrEvoDocData = (xmlNode) => {
 
     const cusip = findIdentifier(tradableForm, 'CUSIP');
     if (!cusip) return null;
+    if (!reverseConvertible && !product.querySelector("bufferedReturnEnhancedNote")) {
+        console.warn(`Skipping CUSIP ${cusip} due to unsupported product structure within pyrEvoDoc.`);
+        return null;
+    }
+
     const { termSheet, finalPS, factSheet } = detectDocType(xmlNode);
-    const cappedValue = findFirstContent(product, ['bufferedReturnEnhancedNote > capped', 'capped']);
+    const cappedValue = findFirstContent(product, ['bufferedReturnEnhancedNote > capped', 'reverseConvertible > capped']);
     const product_type = getProducts(product);
 
     return {
         format: 'pyrEvoDoc', identifier: cusip, prodCusip: cusip, prodIsin: findIdentifier(tradableForm, 'ISIN'),
         underlyingAssetType: getUnderlying(asset), assets: Array.from(asset.querySelectorAll("assets")).map(node => findFirstContent(node, ["bloombergTickerSuffix"])),
-        productType: product_type, productClient: detectClient(xmlNode), productTenor: getProducts(product, "tenor"), couponFrequency: getCoupon(product, "frequency"),
-        couponBarrierLevel: getCoupon(product, "level"), couponMemory: getCoupon(product, "memory"), upsideCap: upsideCap(product), upsideLeverage: upsideLeverage(product),
-        callFrequency: getDetails(product, "frequency", tradableForm), callNonCallPeriod: getDetails(product, "noncall", tradableForm),
-        detailCappedUncapped: (product_type === 'BREN' || product_type === 'REN') ? (cappedValue === 'true' ? 'Capped' : (cappedValue === 'false' ? 'Uncapped' : '')) : '',
-        detailBufferKIBarrier: getDetails(product, "strikelevel"), detailBufferBarrierLevel: getDetails(product, "bufferlevel", tradableForm),
+        productType: product_type, productClient: detectClient(xmlNode), productTenor: getProducts(product, "tenor"),
+        couponFrequency: getCoupon(product, "frequency"),
+        couponBarrierLevel: getCoupon(product, "level"),
+        couponMemory: getCoupon(product, "memory"),
+        couponRateAnnualised: getCoupon(product, "annualisedRate"),
+        upsideCap: upsideCap(product), upsideLeverage: upsideLeverage(product),
+        callFrequency: getDetails(product, "frequency", tradableForm),
+        callNonCallPeriod: getDetails(product, "noncall", tradableForm),
+        callMonitoringType: getDetails(product, "callMonitoring", tradableForm),
+        detailCappedUncapped: (product_type === 'BREN' || product_type === 'REN' || cappedValue)
+                                ? (cappedValue === 'true' ? 'Capped' : (cappedValue === 'false' ? 'Uncapped' : ''))
+                                : '',
+        detailBufferKIBarrier: getDetails(product, "strikelevel", tradableForm),
+        detailBufferBarrierLevel: getDetails(product, "bufferlevel", tradableForm),
         detailInterestBarrierTriggerValue: getDetails(product, null, tradableForm),
         dateBookingStrikeDate: setDate(findFirstContent(xmlNode, ["securitized > issuance > prospectusStartDate", "strikeDate > date"])),
         dateBookingPricingDate: setDate(findFirstContent(tradableForm, ["securitized > issuance > clientOrderTradeDate"])),
@@ -188,6 +218,9 @@ export const extractBarclaysData = (xmlNode) => {
     const barrierLevelValue = parseFloat(findFirstContent(xmlNode, ["payoff > paymentAtMaturity > knockInBarrierLevelRelative > value"]));
     const formattedBarrierLevel = isNaN(barrierLevelValue) ? "N/A" : `${barrierLevelValue * 100}%`;
     const detailBufferKIBarrierValue = (formattedBarrierLevel === "N/A") ? "N/A" : "KI Barrier";
+    const couponBarrierRaw = findFirstContent(xmlNode, ["payoff > couponEvents > schedule > item > barrierLevelRelative > value"]);
+    const couponBarrierFormatted = couponBarrierRaw ? `${parseFloat(couponBarrierRaw) * 100}%` : "N/A";
+
 
     return {
         format: 'Barclays', identifier: isin, prodCusip: "", prodIsin: isin,
@@ -197,10 +230,13 @@ export const extractBarclaysData = (xmlNode) => {
         productClient: findFirstContent(xmlNode, ["manufacturer > nameShort"]),
         productTenor: calculateTenor(issueDateStr, maturityDateStr),
         couponFrequency: findFirstContent(xmlNode, ["payoff > couponEvents > couponObservationDatesInterval"]) || "N/A",
-        couponBarrierLevel: `${parseFloat(findFirstContent(xmlNode, ["payoff > couponEvents > schedule > item > barrierLevelRelative > value"])) * 100}%` || "N/A",
+        couponBarrierLevel: couponBarrierFormatted,
         couponMemory: findFirstContent(xmlNode, ["payoff > couponEvents > schedule > item > memory"]) === 'true' ? 'Y' : 'N',
-        upsideCap: "N/A", upsideLeverage: "N/A", callFrequency: findFirstContent(xmlNode, ["payoff > callEvents > autoCallObservationDatesInterval"]) || "N/A",
+        couponRateAnnualised: "N/A",
+        upsideCap: "N/A", upsideLeverage: "N/A",
+        callFrequency: findFirstContent(xmlNode, ["payoff > callEvents > autoCallObservationDatesInterval"]) || "N/A",
         callNonCallPeriod: calculateTenor(issueDateStr, findFirstContent(xmlNode, ["payoff > callEvents > schedule > item > settlementDate"])),
+        callMonitoringType: findFirstContent(xmlNode, ["payoff > callEvents > monitoringType"]) || "N/A",
         detailCappedUncapped: "N/A", detailBufferKIBarrier: detailBufferKIBarrierValue, detailBufferBarrierLevel: formattedBarrierLevel,
         detailInterestBarrierTriggerValue: "N/A",
         dateBookingStrikeDate: setDate(findFirstContent(xmlNode, ["trade > dates > initialValuationDate"])),

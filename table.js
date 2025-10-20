@@ -1,21 +1,22 @@
 export const getSortableValue = (value) => {
     if (value === null || value === undefined || value === "" || value === "N/A") {
-        return -Infinity; 
+        return -Infinity;
     }
-    const stringValue = String(value); 
+    const stringValue = String(value);
     const dateMatch = stringValue.match(/^(\d{2})-([A-Za-z]{3})-(\d{2})$/);
     if (dateMatch) {
-        const date = new Date(`${dateMatch[1]} ${dateMatch[2]} 20${dateMatch[3]}`);
+                const date = new Date(`${dateMatch[2]} ${dateMatch[1]}, 20${dateMatch[3]}`);
         if (!isNaN(date.getTime())) {
             return date.getTime();
         }
     }
-    const num = parseFloat(stringValue.replace(/[^0-9.-]+/g, ""));
+        const num = parseFloat(stringValue.replace(/[^0-9.-]+/g, ""));
     if (!isNaN(num)) {
         return num;
     }
     return stringValue.toLowerCase();
 };
+
 
 export const getRawValue = (row, key) => {
     if (key.startsWith('asset_')) {
@@ -25,8 +26,12 @@ export const getRawValue = (row, key) => {
     if (key === 'identifier' || key === 'prodCusip') {
         return row.identifier || row.prodCusip || "";
     }
+        if (key === 'callMonitoringType' || key === 'couponRateAnnualised') {
+         return row[key] || "";
+    }
     return row[key] || "";
 };
+
 
 export function sortTable(sortKey, currentSort, consolidatedData) {
     if (currentSort.key === sortKey) {
@@ -55,9 +60,7 @@ export function applyRowGrouping(dataTable, currentSort) {
     const tableBody = dataTable.querySelector('tbody');
     if (!tableBody || !currentSort.key) return;
 
-    // MUDANÇA: Considera apenas linhas VISÍVEIS
-    const rows = Array.from(tableBody.querySelectorAll('tr:not(.hidden)')); 
-    if (rows.length === 0) return;
+    const rows = Array.from(tableBody.querySelectorAll('tr:not(.hidden):not(.no-results)'));     if (rows.length === 0) return;
 
     let currentGroupClass = 'group-a';
     let lastValue = null;
@@ -65,8 +68,7 @@ export function applyRowGrouping(dataTable, currentSort) {
     const headerCells = Array.from(document.querySelectorAll('thead th[data-sort-key]'));
     let sortKeyIndex = -1;
 
-    // Lógica para encontrar o índice da coluna (mantida)
-    for(let i=0; i< headerCells.length; i++) {
+        for(let i=0; i< headerCells.length; i++) {
         if(headerCells[i].dataset.sortKey === currentSort.key) {
              let visibleIndex = 0;
             const allHeadersSecondRow = document.querySelectorAll('thead .second-tr th');
@@ -92,20 +94,22 @@ export function applyRowGrouping(dataTable, currentSort) {
     }
 
     if (sortKeyIndex === -1) {
-        console.error("Could not find index for sort key:", currentSort.key);
+                                rows.forEach(row => row.classList.remove('group-a', 'group-b'));
         return;
     }
 
-    rows.forEach(row => {
-        row.classList.remove('group-a', 'group-b'); // Limpa antes
-        const cell = row.cells[sortKeyIndex];
-        if (!cell) return;
-        
+        rows.forEach(row => {
+        row.classList.remove('group-a', 'group-b');         const cell = row.cells[sortKeyIndex];
+        if (!cell) {
+             console.warn("Cell not found at index", sortKeyIndex, "for row", row);
+             return;
+        };
+
         const currentValue = cell.textContent;
         if (lastValue !== null && currentValue !== lastValue) {
             currentGroupClass = currentGroupClass === 'group-a' ? 'group-b' : 'group-a';
         }
-        
+
         row.classList.add(currentGroupClass);
         lastValue = currentValue;
     });
@@ -122,30 +126,30 @@ export function updateHeaderUI(columnFilters, currentSort = null) {
         const titleText = th.querySelector('.header-title-text');
         const inputWrapper = th.querySelector('.filter-input-wrapper');
 
-        if (columnFilters[sortKey]) {
-            filterIcon?.classList.add('active');
-        } else {
-            filterIcon?.classList.remove('active');
-            // Se o filtro foi limpo externamente (reset), esconde o input
-            if(filterInput && inputWrapper.style.display !== 'none') {
-                filterInput.value = '';
-                inputWrapper.style.display = 'none';
-                titleText.style.display = '';
-                filterIcon.style.display = '';
+                if (filterIcon) {
+            if (columnFilters[sortKey]) {
+                filterIcon.classList.add('active');
+            } else {
+                filterIcon.classList.remove('active');
             }
         }
-        
-        if (currentSort) {
-            th.classList.remove('sorted-asc', 'sorted-desc');
-             if (currentSort.key === sortKey) {
-                 th.classList.add(currentSort.direction === 'asc' ? 'sorted-asc' : 'sorted-desc');
-             }
+
+                if (!columnFilters[sortKey] && filterInput && inputWrapper && inputWrapper.style.display !== 'none') {
+            filterInput.value = '';
+            inputWrapper.style.display = 'none';
+            if (titleText) titleText.style.display = '';
+            if (filterIcon) filterIcon.style.display = '';
+        }
+
+                th.classList.remove('sorted-asc', 'sorted-desc');
+        if (currentSort && currentSort.key === sortKey) {
+            th.classList.add(currentSort.direction === 'asc' ? 'sorted-asc' : 'sorted-desc');
         }
      });
 }
 
 export function updateTableRows(consolidatedData, tableRowsMap, columnFilters, productTypeFilter, orderChanged = false) {
-    const tableBody = document.querySelector(".dataTable tbody");
+     const tableBody = document.querySelector(".dataTable tbody");
     if (!tableBody) return;
 
     const selectedProductType = productTypeFilter.value;
@@ -159,70 +163,57 @@ export function updateTableRows(consolidatedData, tableRowsMap, columnFilters, p
             console.warn("Row element not found for ID:", rowId);
             return;
         }
-
         let isVisible = true;
-
-        if (selectedProductType !== 'all' && row.productType !== selectedProductType) {
-            isVisible = false;
-        }
-
+        if (selectedProductType !== 'all' && row.productType !== selectedProductType) { isVisible = false; }
         if (isVisible && activeColumnFilters.length > 0) {
             isVisible = activeColumnFilters.every(([key, value]) => {
                 const rawValue = String(getRawValue(row, key)).toLowerCase();
                 return rawValue.includes(value);
             });
         }
-
-        if (isVisible) {
-            tr.classList.remove('hidden');
-            visibleDataIds.push(rowId);
-        } else {
-            tr.classList.add('hidden');
-        }
+        if (isVisible) { tr.classList.remove('hidden'); visibleDataIds.push(rowId); }
+        else { tr.classList.add('hidden'); }
     });
 
     if (orderChanged) {
         const fragment = document.createDocumentFragment();
         consolidatedData.forEach(row => {
             const rowId = row.identifier || row.prodCusip;
-            if (visibleDataIds.includes(rowId) && tableRowsMap.has(rowId)) {
+                        if (visibleDataIds.includes(rowId) && tableRowsMap.has(rowId)) {
                 fragment.appendChild(tableRowsMap.get(rowId));
             }
         });
-         tableBody.innerHTML = '';
-         tableBody.appendChild(fragment);
-    }
+                Array.from(tableBody.querySelectorAll('tr[data-id]')).forEach(tr => tableBody.removeChild(tr));
+        tableBody.appendChild(fragment);     }
 
-     const visibleRowCount = tableBody.querySelectorAll('tr:not(.hidden)').length;
-     let noResultsRow = tableBody.querySelector('.no-results');
-     if (visibleRowCount === 0) {
-          if (!noResultsRow) {
-               const totalCols = document.querySelectorAll('thead .second-tr th').length + document.querySelectorAll('thead .first-tr th[rowspan="2"]').length;
-               noResultsRow = tableBody.insertRow();
-               noResultsRow.classList.add('no-results');
-               const cell = noResultsRow.insertCell();
-               cell.colSpan = totalCols;
-               cell.style.textAlign = 'center';
-               cell.style.padding = '2rem';
-               cell.textContent = 'No data matches the current filters.';
-          }
-     } else if (noResultsRow) {
-          tableBody.removeChild(noResultsRow);
-     }
+        const visibleRowCount = visibleDataIds.length;     let noResultsRow = tableBody.querySelector('.no-results');
+
+    if (visibleRowCount === 0) {
+         if (!noResultsRow) {
+              const currentHeaders = document.querySelectorAll('thead th[data-sort-key]');
+              const totalCols = currentHeaders.length;
+              noResultsRow = tableBody.insertRow(0);               noResultsRow.classList.add('no-results');
+              const cell = noResultsRow.insertCell();
+              cell.colSpan = totalCols > 0 ? totalCols : 1;
+              cell.style.textAlign = 'center';
+              cell.style.padding = '2rem';
+              cell.textContent = 'No data matches the current filters.';
+         }
+    } else if (noResultsRow) {
+         tableBody.removeChild(noResultsRow);
+    }
 }
+
 
 export function adjustHeaderWidths() {
     const headers = document.querySelectorAll('thead th[data-sort-key]');
-    const ICON_SPACE_BUFFER = 55;
-    const EXTRA_PADDING_COLS = [
-        'detailCappedUncapped',
-        'detailBufferKIBarrier',
-        'detailBufferBarrierLevel',
-        'callNonCallPeriod',
+    const ICON_SPACE_BUFFER = 55;     const EXTRA_PADDING_COLS = [         'detailCappedUncapped',
+        'detailBufferKIBarrier',         'detailBufferBarrierLevel',
+        'callMonitoringType',
+        'couponRateAnnualised',
+        'callNonCallPeriod'
     ];
-    const EXTRA_PADDING_AMOUNT = 30;
-    const baseMinWidth = 150;
-
+    const EXTRA_PADDING_AMOUNT = 10;     const baseMinWidth = 150; 
     headers.forEach(th => {
         const titleSpan = th.querySelector('.header-title-text');
         const sortKey = th.dataset.sortKey;
@@ -230,34 +221,37 @@ export function adjustHeaderWidths() {
         if (titleSpan && sortKey) {
             const textWidth = titleSpan.scrollWidth;
 
-            const computedStyle = window.getComputedStyle(th);
+                        const computedStyle = window.getComputedStyle(th);
             const paddingLeft = parseFloat(computedStyle.paddingLeft);
             const paddingRight = parseFloat(computedStyle.paddingRight);
             const horizontalPadding = paddingLeft + paddingRight;
 
-            let calculatedWidth = textWidth + ICON_SPACE_BUFFER + horizontalPadding;
+                        let calculatedWidth = textWidth + ICON_SPACE_BUFFER + horizontalPadding;
 
-            let widthToApply = Math.max(baseMinWidth, calculatedWidth);
+                        let widthToApply = Math.max(baseMinWidth, calculatedWidth);
 
-            if (EXTRA_PADDING_COLS.includes(sortKey)) {
+                        if (EXTRA_PADDING_COLS.includes(sortKey)) {
                 widthToApply += EXTRA_PADDING_AMOUNT;
             }
 
-            th.style.minWidth = `${widthToApply}px`;
+                        th.style.minWidth = `${widthToApply}px`;
         }
     });
 }
 
+
 export function renderInitialTable(dataTable, data, maxAssetsForExport, columnFilters, currentSort, productTypeFilter) {
-    
-    let headerStructure = [];
+
+    const showConditionalCols = data.some(row => row.format !== 'Barclays');
+
+        let headerStructure = [];
     let assetHeaders = Array.from({ length: maxAssetsForExport }, (_, i) => ({ title: `Asset ${i + 1}`, sortKey: `asset_${i}`}));
     if (maxAssetsForExport === 1) assetHeaders = [{ title: "Asset", sortKey: 'asset_0' }];
     const hasBrenRenProducts = data.some(row => row.productType === 'BREN' || row.productType === 'REN');
     const formatsInData = new Set(data.map(row => row.format));
     let idColumnTitle = "CUSIP / ISIN";
     let showSecondIsinColumn = false;
-    const showDocTypeColumns = !(formatsInData.size === 1 && formatsInData.has('Barclays'));
+    const showDocTypeColumns = showConditionalCols && !(formatsInData.size === 1 && formatsInData.has('Barclays'));
     if (formatsInData.size === 1) {
         if (formatsInData.has('Barclays')) idColumnTitle = "ISIN";
         if (formatsInData.has('pyrEvoDoc')) { idColumnTitle = "CUSIP"; showSecondIsinColumn = true; }
@@ -265,36 +259,51 @@ export function renderInitialTable(dataTable, data, maxAssetsForExport, columnFi
     const firstColSortKey = formatsInData.has('pyrEvoDoc') ? 'prodCusip' : 'identifier';
     let initialHeaders = [{ title: idColumnTitle, isSticky: true, sortKey: firstColSortKey }];
     if (showSecondIsinColumn) { initialHeaders.push({ title: "ISIN", sortKey: 'prodIsin' }); }
+
     const detailsChildren = [{ title: "Upside Cap", sortKey: 'upsideCap'}, { title: "Upside Leverage", sortKey: 'upsideLeverage'}];
     if (hasBrenRenProducts) { detailsChildren.push({ title: "Capped / Uncapped", sortKey: 'detailCappedUncapped'}); }
     detailsChildren.push({ title: "Buffer / Barrier", sortKey: 'detailBufferKIBarrier'}, { title: "Barrier/Buffer Level", sortKey: 'detailBufferBarrierLevel'}, { title: "Interest v Barrier/Buffer", sortKey: 'detailInterestBarrierTriggerValue'});
+
     const callChildren = [{ title: "Frequency", sortKey: 'callFrequency' }, { title: "Non-call period", sortKey: 'callNonCallPeriod' }];
-    headerStructure = [...initialHeaders, { title: "Underlying", children: [{ title: "Asset Type", sortKey: 'underlyingAssetType'}, ...assetHeaders] }, { title: "Product Details", children: [{ title: "Product Type", sortKey: 'productType'}, { title: "Client", sortKey: 'productClient'}, { title: "Tenor", sortKey: 'productTenor'}] }, { title: "Coupons", children: [{ title: "Frequency", sortKey: 'couponFrequency'}, { title: "Barrier Level", sortKey: 'couponBarrierLevel'}, { title: "Memory", sortKey: 'couponMemory'}] }, { title: "CALL", children: callChildren }, { title: "Details", children: detailsChildren }, { title: "DATES IN BOOKINGS", children: [{ title: "Strike", sortKey: 'dateBookingStrikeDate'}, { title: "Pricing", sortKey: 'dateBookingPricingDate'}, { title: "Maturity", sortKey: 'maturityDate'}, { title: "Valuation", sortKey: 'valuationDate'}, { title: "Early Strike", sortKey: 'earlyStrike'}] }];
+    if (showConditionalCols) {
+        callChildren.push({ title: "Call Monitoring Type", sortKey: 'callMonitoringType'});
+    }
+
+    const couponChildren = [{ title: "Frequency", sortKey: 'couponFrequency'}, { title: "Barrier Level", sortKey: 'couponBarrierLevel'}, { title: "Memory", sortKey: 'couponMemory'}];
+     if (showConditionalCols) {
+         couponChildren.push({ title: "Coupon rate annualised", sortKey: 'couponRateAnnualised'});
+     }
+
+    headerStructure = [...initialHeaders,
+        { title: "Underlying", children: [{ title: "Asset Type", sortKey: 'underlyingAssetType'}, ...assetHeaders] },
+        { title: "Product Details", children: [{ title: "Product Type", sortKey: 'productType'}, { title: "Client", sortKey: 'productClient'}, { title: "Tenor", sortKey: 'productTenor'}] },
+        { title: "Coupons", children: couponChildren },
+        { title: "CALL", children: callChildren },
+        { title: "Details", children: detailsChildren },
+        { title: "DATES IN BOOKINGS", children: [{ title: "Strike", sortKey: 'dateBookingStrikeDate'}, { title: "Pricing", sortKey: 'dateBookingPricingDate'}, { title: "Maturity", sortKey: 'maturityDate'}, { title: "Valuation", sortKey: 'valuationDate'}, { title: "Early Strike", sortKey: 'earlyStrike'}] }
+    ];
     if (showDocTypeColumns) { headerStructure.push({ title: "Doc Type", children: [{ title: "Term Sheet", sortKey: 'termSheet'}, { title: "Final PS", sortKey: 'finalPS'}, { title: "Fact Sheet", sortKey: 'factSheet'}] }); }
 
-    let headerHtml = "<tr class='first-tr'>";
+        let headerHtml = "<tr class='first-tr'>";
     headerStructure.forEach(({ title, children, isSticky, sortKey }) => {
         const span = children ? `colspan="${children.length}"` : `rowspan="2"`;
         const stickyClass = isSticky ? 'sticky-col' : '';
         const categoryClass = children ? 'category' : '';
-        const sortKeyAttr = !children && sortKey ? `data-sort-key="${sortKey}"` : ''; 
+        const sortKeyAttr = !children && sortKey ? `data-sort-key="${sortKey}"` : '';
         headerHtml += `<th class="${stickyClass} ${categoryClass}" ${span} ${sortKeyAttr}>`;
-        if (!children && sortKey) { 
+        if (!children && sortKey) {
              const filterValue = columnFilters[sortKey] || '';
              const titleStyle = filterValue ? 'style="display:none;"' : '';
-             const inputStyle = filterValue ? 'style="display:flex;"' : 'style="display:none;"'; 
+             const inputStyle = filterValue ? 'style="display:flex;"' : 'style="display:none;"';
              headerHtml += `<span class="header-title-text" ${titleStyle}>${title.toUpperCase()}</span>`;
              headerHtml += `<span class="filter-icon" title="Filter column" ${titleStyle}>&#128269;</span>`;
-             headerHtml += `<div class="filter-input-wrapper" ${inputStyle}>
-                             <input type="text" class="column-filter-input" data-filter-key="${sortKey}" value="${filterValue}" placeholder="Filter...">
-                             <span class="clear-filter" title="Clear filter">×</span>
-                           </div>`;
+             headerHtml += `<div class="filter-input-wrapper" ${inputStyle}><input type="text" class="column-filter-input" data-filter-key="${sortKey}" value="${filterValue}" placeholder="Filter..."><span class="clear-filter" title="Clear filter">×</span></div>`;
         } else { headerHtml += title.toUpperCase(); }
         headerHtml += `</th>`;
     });
     headerHtml += "</tr><tr class='second-tr'>";
     headerStructure.forEach(({ children }) => {
-        if (Array.isArray(children)) { 
+        if (Array.isArray(children)) {
             children.forEach(child => {
                 const sortKey = child.sortKey;
                  const filterValue = columnFilters[sortKey] || '';
@@ -303,17 +312,14 @@ export function renderInitialTable(dataTable, data, maxAssetsForExport, columnFi
                  headerHtml += `<th data-sort-key="${sortKey}">`;
                  headerHtml += `<span class="header-title-text" ${titleStyle}>${child.title}</span>`;
                  headerHtml += `<span class="filter-icon" title="Filter column" ${titleStyle}>&#128269;</span>`;
-                 headerHtml += `<div class="filter-input-wrapper" ${inputStyle}>
-                                 <input type="text" class="column-filter-input" data-filter-key="${sortKey}" value="${filterValue}" placeholder="Filter...">
-                                 <span class="clear-filter" title="Clear filter">×</span>
-                               </div>`;
+                 headerHtml += `<div class="filter-input-wrapper" ${inputStyle}><input type="text" class="column-filter-input" data-filter-key="${sortKey}" value="${filterValue}" placeholder="Filter..."><span class="clear-filter" title="Clear filter">×</span></div>`;
                  headerHtml += `</th>`;
             });
         }
     });
     headerHtml += "</tr>";
 
-    let bodyHtml = "";
+        let bodyHtml = "";
     if (data.length === 0) {
         const totalCols = headerStructure.reduce((acc, h) => acc + (h.children ? h.children.length : 1), 0);
         bodyHtml += `<tr><td colspan="${totalCols}" style="text-align: center; padding: 2rem;">No data loaded.</td></tr>`;
@@ -327,8 +333,8 @@ export function renderInitialTable(dataTable, data, maxAssetsForExport, columnFi
             for (let i = 0; i < maxAssetsForExport; i++) { bodyHtml += `<td>${(row.assets && row.assets[i]) ? row.assets[i] : ""}</td>`; }
             bodyHtml += `<td>${row.productType || ""}</td>`; bodyHtml += `<td>${row.productClient || ""}</td>`; bodyHtml += `<td>${row.productTenor || ""}</td>`;
             bodyHtml += `<td>${row.couponFrequency || ""}</td>`; bodyHtml += `<td>${row.couponBarrierLevel || ""}</td>`; bodyHtml += `<td>${row.couponMemory || ""}</td>`;
-            bodyHtml += `<td>${row.callFrequency || ""}</td>`; bodyHtml += `<td>${row.callNonCallPeriod || ""}</td>`;
-            bodyHtml += `<td>${row.upsideCap || ""}</td>`; bodyHtml += `<td>${row.upsideLeverage || ""}</td>`;
+            if (showConditionalCols) { bodyHtml += `<td>${row.couponRateAnnualised || ""}</td>`; }             bodyHtml += `<td>${row.callFrequency || ""}</td>`; bodyHtml += `<td>${row.callNonCallPeriod || ""}</td>`;
+            if (showConditionalCols) { bodyHtml += `<td>${row.callMonitoringType || ""}</td>`; }             bodyHtml += `<td>${row.upsideCap || ""}</td>`; bodyHtml += `<td>${row.upsideLeverage || ""}</td>`;
             if (hasBrenRenProducts) { bodyHtml += `<td>${row.detailCappedUncapped || ""}</td>`; }
             bodyHtml += `<td>${row.detailBufferKIBarrier || ""}</td>`; bodyHtml += `<td>${row.detailBufferBarrierLevel || ""}</td>`; bodyHtml += `<td>${row.detailInterestBarrierTriggerValue || ""}</td>`;
             bodyHtml += `<td>${row.dateBookingStrikeDate || ""}</td>`; bodyHtml += `<td>${row.dateBookingPricingDate || ""}</td>`; bodyHtml += `<td>${row.maturityDate || ""}</td>`; bodyHtml += `<td>${row.valuationDate || ""}</td>`; bodyHtml += `<td>${row.earlyStrike || ""}</td>`;
@@ -337,19 +343,15 @@ export function renderInitialTable(dataTable, data, maxAssetsForExport, columnFi
         });
     }
 
-    dataTable.innerHTML = `<table><thead>${headerHtml}</thead><tbody>${bodyHtml}</tbody></table>`;
-    
-    const tableBody = dataTable.querySelector('tbody');
+        dataTable.innerHTML = `<table><thead>${headerHtml}</thead><tbody>${bodyHtml}</tbody></table>`;
+
+        const tableBody = dataTable.querySelector('tbody');
     const tableRowsMap = new Map();
-    tableBody.querySelectorAll('tr').forEach(tr => {
-        if(tr.dataset.id) {
-             tableRowsMap.set(tr.dataset.id, tr);
-        }
+    tableBody.querySelectorAll('tr[data-id]').forEach(tr => {         tableRowsMap.set(tr.dataset.id, tr);
     });
 
-    updateHeaderUI(columnFilters, currentSort); 
-    updateTableRows(data, tableRowsMap, columnFilters, productTypeFilter); 
-    applyRowGrouping(dataTable, currentSort); 
+        updateHeaderUI(columnFilters, currentSort);
+        applyRowGrouping(dataTable, currentSort);
 
-    return { headerStructure, tableBody, tableRowsMap };
+        return { headerStructure, tableBody, tableRowsMap };
 }
