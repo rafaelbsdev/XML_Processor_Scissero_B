@@ -347,8 +347,9 @@ tbody tr.group-b td.sticky-col {
 tbody tr:hover td {
     background-color: rgba(0, 119, 200, 0.1);
 }
+
 tbody tr:hover td.sticky-col {
-    background-color: rgba(0, 119, 200, 0.1);
+    background-color: #2a364a;
     z-index: 3;
 }
 
@@ -389,7 +390,6 @@ thead .second-tr th[data-sort-key],
 thead .first-tr th[rowspan="2"][data-sort-key] {
     min-width: 150px;
 }
-
 
 .filter-icon {
     position: absolute;

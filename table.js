@@ -114,7 +114,6 @@ export function updateTableRows(consolidatedData, tableRowsMap, columnFilters, p
     const selectedProductType = productTypeFilter.value;
     const activeColumnFilters = Object.entries(columnFilters).filter(([key, value]) => value);
     let visibleDataIds = [];
-
     consolidatedData.forEach(row => {
         const rowId = row.identifier || row.prodCusip;
         const tr = tableRowsMap.get(rowId);
@@ -138,13 +137,12 @@ export function updateTableRows(consolidatedData, tableRowsMap, columnFilters, p
         Array.from(tableBody.querySelectorAll('tr[data-id]')).forEach(tr => tableBody.removeChild(tr));
         tableBody.appendChild(fragment);
     }
-
     const visibleRowCount = visibleDataIds.length;
     let noResultsRow = tableBody.querySelector('.no-results');
     if (visibleRowCount === 0) {
         if (!noResultsRow) {
             const currentHeaders = document.querySelectorAll('thead th[data-sort-key]');
-            const totalCols = currentHeaders.length;
+            const totalCols = Array.from(currentHeaders).filter(th => th.offsetParent !== null).length;
             noResultsRow = tableBody.insertRow(0);
             noResultsRow.classList.add('no-results');
             const cell = noResultsRow.insertCell();
@@ -185,11 +183,11 @@ export function renderInitialTable(dataTable, data, maxAssetsForExport, columnFi
     const hasBarclays = data.some(row => row.format === 'Barclays');
     const showCouponMonitoringCols = data.some(row => row.format !== 'Barclays');
     const showDocTypeColumns = showCouponMonitoringCols;
+    const hasCappedData = data.some(row => row.detailCappedUncapped === 'Capped' || row.detailCappedUncapped === 'Uncapped');
 
     let headerStructure = [];
     let assetHeaders = Array.from({ length: maxAssetsForExport }, (_, i) => ({ title: `Asset ${i + 1}`, sortKey: `asset_${i}`}));
     if (maxAssetsForExport === 1) assetHeaders = [{ title: "Asset", sortKey: 'asset_0' }];
-    const hasBrenRenProducts = data.some(row => row.productType === 'BREN' || row.productType === 'REN');
 
     let idColumnTitle = "CUSIP / ISIN";
     let showSecondIsinColumn = false;
@@ -205,7 +203,9 @@ export function renderInitialTable(dataTable, data, maxAssetsForExport, columnFi
         { title: "Upside Cap", sortKey: 'upsideCap'},
         { title: "Upside Leverage", sortKey: 'upsideLeverage'}
     ];
-    if (hasBrenRenProducts) { detailsChildren.push({ title: "Capped / Uncapped", sortKey: 'detailCappedUncapped'}); }
+    if (hasCappedData) {
+        detailsChildren.push({ title: "Capped / Uncapped", sortKey: 'detailCappedUncapped'});
+    }
     detailsChildren.push(
         { title: "Buffer / Barrier", sortKey: 'detailBufferKIBarrier'},
         { title: "Barrier/Buffer Level", sortKey: 'detailBufferBarrierLevel'},
@@ -285,22 +285,32 @@ export function renderInitialTable(dataTable, data, maxAssetsForExport, columnFi
         data.forEach(row => {
             const rowId = row.identifier || row.prodCusip;
             bodyHtml += `<tr data-id="${rowId}" data-product-type="${row.productType || ''}">`;
+            // Células Iniciais
             bodyHtml += `<td class="sticky-col">${row.prodCusip || row.identifier}</td>`;
             if (showSecondIsinColumn) { bodyHtml += `<td>${row.prodIsin || ""}</td>`; }
+            // Underlying
             bodyHtml += `<td>${row.underlyingAssetType || ""}</td>`;
             for (let i = 0; i < maxAssetsForExport; i++) { bodyHtml += `<td>${(row.assets && row.assets[i]) ? row.assets[i] : ""}</td>`; }
+            // Product Details
             bodyHtml += `<td>${row.productType || ""}</td>`; bodyHtml += `<td>${row.productClient || ""}</td>`; bodyHtml += `<td>${row.productTenor || ""}</td>`;
+            // Coupons
             bodyHtml += `<td>${row.couponFrequency || ""}</td>`; bodyHtml += `<td>${row.couponBarrierLevel || ""}</td>`; bodyHtml += `<td>${row.couponMemory || ""}</td>`;
             if (showCouponMonitoringCols) { bodyHtml += `<td>${row.couponRateAnnualised || ""}</td>`; }
+            // Call
             bodyHtml += `<td>${row.callFrequency || ""}</td>`; bodyHtml += `<td>${row.callNonCallPeriod || ""}</td>`;
             if (showCouponMonitoringCols) { bodyHtml += `<td>${row.callMonitoringType || ""}</td>`; }
+            // Details
             bodyHtml += `<td>${row.upsideCap || ""}</td>`; bodyHtml += `<td>${row.upsideLeverage || ""}</td>`;
-            if (hasBrenRenProducts) { bodyHtml += `<td>${row.detailCappedUncapped || ""}</td>`; }
+            if (hasCappedData) {
+                bodyHtml += `<td>${row.detailCappedUncapped || ""}</td>`;
+            }
             bodyHtml += `<td>${row.detailBufferKIBarrier || ""}</td>`; bodyHtml += `<td>${row.detailBufferBarrierLevel || ""}</td>`; bodyHtml += `<td>${row.detailInterestBarrierTriggerValue || ""}</td>`;
             if (hasBarclays) {
                 bodyHtml += `<td>${row.programmeName || ""}</td>`; bodyHtml += `<td>${row.jurisdiction || ""}</td>`;
             }
+            // Dates
             bodyHtml += `<td>${row.dateBookingStrikeDate || ""}</td>`; bodyHtml += `<td>${row.dateBookingPricingDate || ""}</td>`; bodyHtml += `<td>${row.maturityDate || ""}</td>`; bodyHtml += `<td>${row.valuationDate || ""}</td>`; bodyHtml += `<td>${row.earlyStrike || ""}</td>`;
+            // Doc Types
             if (showDocTypeColumns) { bodyHtml += `<td>${row.termSheet || ""}</td>`; bodyHtml += `<td>${row.finalPS || ""}</td>`; bodyHtml += `<td>${row.factSheet || ""}</td>`; }
             bodyHtml += "</tr>";
         });
