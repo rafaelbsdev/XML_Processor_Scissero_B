@@ -112,7 +112,13 @@ const calculateTenor = (startDateStr, endDateStr) => {
 
 const detectXMLFormat = (xmlNode) => {
     if (xmlNode.querySelector("pyrEvoDoc")) return 'pyrEvoDoc';
-    if (xmlNode.querySelector("priip")) return 'Barclays';
+    if (xmlNode.querySelector("priip")) {
+        const manufacturerId = findFirstContent(xmlNode, ["manufacturer > id"]).toLowerCase();
+        if (manufacturerId.includes("morganstanley")) {
+            return 'MorganStanley';
+        }
+        return 'Barclays';
+    }
     return 'unknown';
 };
 
@@ -289,6 +295,58 @@ const extractBarclaysData = (xmlNode) => {
     };
 };
 
+const extractMorganStanleyData = (xmlNode) => {
+    const isin = findFirstContent(xmlNode, ["codes > isin"]);
+    if (!isin) return null;
+
+    const issueDateStr = findFirstContent(xmlNode, ["trade > dates > issueDate"]);
+    const maturityDateStr = findFirstContent(xmlNode, ["trade > dates > maturityDate"]);
+    const assetsNodes = xmlNode.querySelectorAll("referenceAsset > underlyings > item");
+    
+    const assetType = findFirstContent(assetsNodes[0], ["type"]) || findFirstContent(assetsNodes[0], ["indexSubType"]);
+    const refAssetType = findFirstContent(xmlNode, ["referenceAsset > type"]);
+    const formattedAssetType = assetsNodes.length > 1 ? `${refAssetType === 'worstOf' ? 'WorstOf' : 'Multiple'} ${assetType}` : `Single ${assetType}`;
+
+    const barrierLevelValue = parseFloat(findFirstContent(xmlNode, ["payoff > paymentAtMaturity > knockInBarrierLevelRelative > value"]));
+    const formattedBarrierLevel = isNaN(barrierLevelValue) ? "N/A" : `${barrierLevelValue * 100}%`;
+    const detailBufferKIBarrierValue = (formattedBarrierLevel === "N/A") ? "N/A" : "KI Barrier";
+
+    const couponFreq = findFirstContent(xmlNode, ["payoff > couponEvents > couponObservationDatesInterval"]) || "N/A";
+    const couponBarrierRaw = parseFloat(findFirstContent(xmlNode, ["payoff > couponEvents > schedule > item > barrierLevelRelative > value"]));
+    const couponBarrier = isNaN(couponBarrierRaw) ? "N/A" : `${couponBarrierRaw * 100}%`;
+
+    return {
+        format: 'MorganStanley', 
+        identifier: isin, 
+        prodCusip: "", 
+        prodIsin: isin,
+        underlyingAssetType: formattedAssetType,
+        assets: Array.from(assetsNodes).map(node => findFirstContent(node, ["name"])),
+        productType: findFirstContent(xmlNode, ["product > clientProductType"]),
+        productClient: findFirstContent(xmlNode, ["manufacturer > nameShort"]),
+        productTenor: calculateTenor(issueDateStr, maturityDateStr),
+        couponFrequency: couponFreq,
+        couponBarrierLevel: couponBarrier,
+        couponMemory: findFirstContent(xmlNode, ["payoff > couponEvents > schedule > item > memory"]) === 'true' ? 'Y' : 'N',
+        upsideCap: "N/A", 
+        upsideLeverage: "N/A", 
+        callFrequency: findFirstContent(xmlNode, ["payoff > callEvents > autoCallObservationDatesInterval"]) || "N/A",
+        callNonCallPeriod: calculateTenor(issueDateStr, findFirstContent(xmlNode, ["payoff > callEvents > schedule > item > settlementDate"])),
+        detailCappedUncapped: "N/A", 
+        detailBufferKIBarrier: detailBufferKIBarrierValue, 
+        detailBufferBarrierLevel: formattedBarrierLevel,
+        detailInterestBarrierTriggerValue: "N/A",
+        dateBookingStrikeDate: setDate(findFirstContent(xmlNode, ["trade > dates > initialValuationDate"])),
+        dateBookingPricingDate: setDate(findFirstContent(xmlNode, ["trade > dates > tradeDate"])),
+        maturityDate: setDate(maturityDateStr), 
+        valuationDate: setDate(findFirstContent(xmlNode, ["trade > dates > finalValuationDate"])),
+        earlyStrike: "N/A", 
+        termSheet: "N", 
+        finalPS: findFirstContent(xmlNode, ["document > type"]) === 'final' ? "Y" : "N", 
+        factSheet: "N",
+    };
+};
+
 async function previewExtractedXML() {
     const files = Array.from(fileInput.files);
     if (files.length === 0) {
@@ -321,6 +379,8 @@ async function previewExtractedXML() {
                 itemData = extractPyrEvoDocData(xmlNode);
             } else if (format === 'Barclays') {
                 itemData = extractBarclaysData(xmlNode);
+            } else if (format === 'MorganStanley') {
+                itemData = extractMorganStanleyData(xmlNode);
             } else {
                 console.warn(`Skipping file ${file.name} due to unknown format.`);
                 continue;
@@ -588,7 +648,7 @@ function renderTable(data) {
     const showDocTypeColumns = !(formatsInData.size === 1 && formatsInData.has('Barclays'));
 
     if (formatsInData.size === 1) {
-        if (formatsInData.has('Barclays')) idColumnTitle = "ISIN";
+        if (formatsInData.has('Barclays') || formatsInData.has('MorganStanley')) idColumnTitle = "ISIN";
         if (formatsInData.has('pyrEvoDoc')) {
             idColumnTitle = "CUSIP";
             showSecondIsinColumn = true;
@@ -788,10 +848,10 @@ function exportExcel() {
         const sheetName = sanitizeSheetName(productType);
         
         const format = sheetData[0]?.format;
-        const idColumnTitle = format === 'Barclays' ? 'ISIN' : 'CUSIP';
+        const idColumnTitle = (format === 'Barclays' || format === 'MorganStanley') ? 'ISIN' : 'CUSIP';
         const showSecondIsinColumn = format === 'pyrEvoDoc';
         const isBrenRenSheet = sheetData.some(row => row.productType === 'BREN' || row.productType === 'REN');
-        const showDocTypeColumns = (format !== 'Barclays');
+        const showDocTypeColumns = (format !== 'Barclays' && format !== 'MorganStanley');
 
         let assetHeaders = Array.from({ length: maxAssetsForExport }, (_, i) => `Asset ${i + 1}`);
         if (maxAssetsForExport === 1) assetHeaders = ["Asset"];
